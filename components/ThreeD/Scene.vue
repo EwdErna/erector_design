@@ -5,7 +5,7 @@
 </template>
 
 <script lang="ts" setup>
-import { AmbientLight, AxesHelper, DirectionalLight, GridHelper, PerspectiveCamera, Scene, WebGLRenderer, Color, Vector2, Raycaster, Quaternion, Vector3 } from 'three';
+import { AmbientLight, AxesHelper, DirectionalLight, GridHelper, PerspectiveCamera, Scene, WebGLRenderer, Color, Vector2, Raycaster, Quaternion, Vector3, Euler, Object3D } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/Addons.js';
 import type { ErectorPipe, ErectorPipeConnection } from '~/types/erector_component';
 import erectorComponentDefinition from '~/data/erector_component.json'
@@ -15,7 +15,9 @@ const objectSelection = useObjectSelection()
 const three = useThree()
 let renderer: WebGLRenderer
 let camera: PerspectiveCamera
+let rootPipeId: string
 const erector = useErectorPipeJoint()
+const rootPipeObject: Ref<Object3D | undefined> = ref()
 function instanciate(structure: { pipes: ErectorPipe[], joints: { id: string, name: string }[] }) {
   if (!three.scene) return;
   const scene = three.scene
@@ -158,6 +160,10 @@ const setupScene = () => {
   scene.add(axesHelper)
 
   instanciate(erector_structure)
+  rootPipeId = erector_structure.pipes[0].id
+  rootPipeObject.value = erector.instances.find(i => i.id === rootPipeId)?.obj
+  rootPipeObject.value?.rotation.set(0, 40 / 180 * Math.PI, 0)
+
   const ambientLight = new AmbientLight(0xffffff, 0.5)
   scene.add(ambientLight)
   const directionalLight = new DirectionalLight(0xffffff)
@@ -167,6 +173,9 @@ const setupScene = () => {
 }
 const animate = (scene: Scene) => {
   if (!scene) return;
+erector.worldPosition({
+    id: rootPipeId, position: rootPipeObject.value?.position.clone() ?? new Vector3(), rotation: new Quaternion().setFromEuler(rootPipeObject.value?.rotation ?? new Euler(0, 0, 0))
+  })
   requestAnimationFrame(() => animate(scene))
   renderer.render(scene, camera)
 }
