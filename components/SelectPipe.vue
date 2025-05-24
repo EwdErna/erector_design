@@ -19,7 +19,8 @@
         </div>
       </div>
       <div class="length-list">
-        <div class="length-item" v-for="length in components.pipe.lengths" :key="length">
+        <div class="length-item" v-for="length in components.pipe.lengths" :key="length"
+          @click="selected.length = length; addPipeToScene()">
           {{ length * 1000 }} mm
         </div>
       </div>
@@ -48,6 +49,12 @@ const selected = useState<{
 }))
 const selectColor = (color: string) => {
   selected.value.color = color
+}
+const addPipeToScene = () => {
+  const scene = useThree().scene
+  if (!scene) { return }
+  const erector = useErectorPipeJoint()
+  const added_id = erector.addPipe(scene, selected.value.diameter / 1000, selected.value.length)
 }
 
 </script>
