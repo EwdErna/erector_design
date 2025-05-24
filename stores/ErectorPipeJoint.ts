@@ -10,6 +10,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
     pipes: [] as ErectorPipe[],
     joints: [] as ErectorJoint[],
     instances: [] as { id: string, obj?: Object3D }[],
+    renderCount: 0,
   }),
   actions: {
     addPipe(scene: Scene, diameter: number, length: number, id?: string) {//pipeの存在だけを追加
@@ -150,9 +151,11 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       const updated: string[] = []
       const joints = this.joints
       const instances = this.instances
+      const renderCount = this.renderCount++
       function update(updated: string[], pipe: ErectorPipe, pipeTransform: transform) {
         if (updated.includes(pipe.id)) {
           // jointのみ更新
+          if (renderCount === 0) console.log(pipe)
           if (pipe.connections.start) {
             const start = pipe.connections.start
             const joint = joints.find(joint => joint.id === start.jointId)
@@ -197,6 +200,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
               else {
                 updated.push(pipe.connections.end.jointId)
                 if (hole) {
+                  if (renderCount === 0) console.log(pipe.connections.end)
                   const rotation = pipeTransform.rotation.clone()
                     .multiply(new Quaternion().setFromEuler(new Euler(0, Math.PI, 0))
                       .multiply(hole.dir.clone()
@@ -232,12 +236,14 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
                   const position = pipeTransform.position.clone().add(new Vector3(0, 0, 1).applyQuaternion(pipeTransform.rotation).multiplyScalar(pipe.length * conn.position)).add(hole.offset.clone().applyQuaternion(rotation))
                   const target = instances.find(i => i.id === joint.id)?.obj;
                   target?.position.set(...position.toArray())
+                  if (renderCount === 100) console.log(target)
                   target?.rotation.setFromQuaternion(rotation)
                 }
               }
             }
           })
         } else {
+          if (renderCount === 0) console.log(pipe)
           // jointの座標が一つ以上確定していれば、それをもとに更新
           // 一つも確定していなければ一旦無視→後で見るリストが必要
           const start = pipe.connections.start
