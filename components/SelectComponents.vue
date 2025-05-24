@@ -1,9 +1,19 @@
 <template>
     <div class="container">
         <h2>Components</h2>
+        <SelectPipe :pipe="components.pipe"></SelectPipe>
     </div>
 </template>
 
+<script lang="ts" setup>
+import components_json from "@/data/erector_component.json"
+import type { ErectorComponent } from "~/types/erector_component";
+const components = components_json as ErectorComponent
+// パイプの選び方：
+// パイプの太さをselectで選択
+// パイプの色を丸で選択
+// パイプの長さを一覧から選択
+</script>
 <style scoped>
 .container {
     height: 100%;
