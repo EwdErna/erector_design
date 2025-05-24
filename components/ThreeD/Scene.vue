@@ -5,13 +5,61 @@
 </template>
 
 <script lang="ts" setup>
-import { AmbientLight, AxesHelper, DirectionalLight, GridHelper, PerspectiveCamera, Scene, WebGLRenderer, Color } from 'three';
+import type { ErectorPipe, ErectorPipeConnection } from '~/types/erector_component';
+import erectorComponentDefinition from '~/data/erector_component.json'
+
 const container = useTemplateRef("container")
 const three = useThree()
 let renderer: WebGLRenderer
 let camera: PerspectiveCamera
 const setupScene = () => {
   if (!container.value) return
+
+  const erector_structure: { pipes: ErectorPipe[], joints: { id: string, name: string }[] } = {
+    pipes: [{
+      id: "P_0001",
+      length: 0.3,
+      diameter: 0.028,
+      connections: {
+        end: {
+          id: "P_0001-conn-0",
+          jointId: "J-4_0001",
+          holeId: 0,
+          rotation: 30,
+          position: 0
+        },
+        midway: [
+          {
+            id: "P_0001-conn-2",
+            jointId: "J-12B_0001",
+            holeId: 0,
+            rotation: 0,
+            position: 0.75
+          }
+        ]
+      }
+    }, {
+      id: "P_0002",
+      length: 0.3,
+      diameter: 0.028,
+      connections: {
+        start: {
+          id: "P_0002-conn-0",
+          jointId: "J-4_0001",
+          holeId: 1,
+          rotation: 0,
+          position: 0
+        },
+        midway: []
+      }
+    }],
+    joints: [{
+      id: 'J-4_0001',
+      name: 'J-4'
+    }, {
+      id: 'J-12B_0001', name: 'J-12B'
+    }]
+  }
 
   renderer = new WebGLRenderer({ antialias: true })
   renderer.setSize(container.value.clientWidth, container.value.clientHeight)
@@ -37,6 +85,7 @@ const setupScene = () => {
   scene.add(ambientLight)
   const directionalLight = new DirectionalLight(0xffffff)
   scene.add(directionalLight)
+  const gltfLoader = new GLTFLoader()
   animate(scene)
 }
 const animate = (scene: Scene) => {
