@@ -5,56 +5,101 @@
     <div v-if="selectedPipe">
       <div v-if="selectedObject?.obj">
         <div>
-          position: {{ selectedObject.obj.position.x }}, {{ selectedObject.obj.position.y }}, {{
-            selectedObject.obj.position.z }}
+          position: <input type="number" :value="selectedObject.obj.position.x"
+            @change="selectedObject.obj.position.x = Number.parseFloat(($event.target as HTMLInputElement).value)">,
+          <input type="number" :value="selectedObject.obj.position.y"
+            @change="selectedObject.obj.position.y = Number.parseFloat(($event.target as HTMLInputElement).value)">,
+          <input type="number" :value="selectedObject.obj.position.z"
+            @change="selectedObject.obj.position.z = Number.parseFloat(($event.target as HTMLInputElement).value)">
         </div>
         <div>
-          rotation: {{ selectedObject.obj.rotation.x }}, {{ selectedObject.obj.rotation.y }}, {{
-            selectedObject.obj.rotation.z }}
+          rotation: <input type="number" :value="selectedObject.obj.rotation.x * 180 / Math.PI"
+            @change="selectedObject.obj.rotation.x = Number.parseFloat(($event.target as HTMLInputElement).value) / 180 * Math.PI">,
+          <input type="number" :value="selectedObject.obj.rotation.y * 180 / Math.PI"
+            @change="selectedObject.obj.rotation.y = Number.parseFloat(($event.target as HTMLInputElement).value) / 180 * Math.PI">,
+          <input type="number" :value="selectedObject.obj.rotation.z * 180 / Math.PI"
+            @change="selectedObject.obj.rotation.z = Number.parseFloat(($event.target as HTMLInputElement).value) / 180 * Math.PI">
         </div>
-        </div>
-      <div>{{ selectedPipe.length * 1000 }}mm
       </div>
-      <div>{{ selectedPipe.diameter }}mm
+      <div>{{ selectedPipe.length * 1000 }}mm
+        <input type="range" min="0" max="4000" step="100" :value="selectedPipe.length * 1000"
+          @change="lenChange($event, selectedPipe)" />
+        <input type="number" min="0" max="4000" :value="selectedPipe.length * 1000"
+          @change="lenChange($event, selectedPipe)" />
+      </div>
+      <div><select :value="selectedPipe.diameter">
+          <option v-for="d in [28, 32, 42]" :value="d / 1000">Φ{{ d }}</option>
+        </select>
       </div>
       <div>
         <div>
           <h4>Start Connection</h4>
+          <button v-if="!connStart"
+            @click="erector.addConnection(selectedPipe.id, erector.joints[0].id, 0, 'start')">add</button>
+          <button v-if="connStart" @click="selectedPipe.connections.start = undefined">remove</button>
         </div>
         <div v-if="connStart">
-          <div>Joint ID: {{ connStart.jointId }}
+          <div>Joint ID: <select :value="connStart.jointId"
+              @change="updateConnection($event, selectedPipe.id, connStart.id, 'jointId')">
+              <option v-for="joint in erector.joints" :value="joint.id">{{ joint.id }} / {{ joint.name }}</option>
+            </select>
           </div>
-          <div>Hole ID: {{ connStart.holeId }}
+          <div>Hole ID: <select :value="connStart.holeId"
+              @change="updateConnection($event, selectedPipe.id, connStart.id, 'holeId')">
+              <option v-for="_, i in connStartJoint?.holes" :value="i">{{ i }}</option>
+            </select>
           </div>
-          <div>Rotation: {{ connStart.rotation }}
+          <div>Rotation: <input type="number" :value="connStart.rotation"
+              @change="updateConnection($event, selectedPipe.id, connStart.id, 'rotation')">
           </div>
         </div>
         <div>
           <h4>End Connection</h4>
+          <button v-if="!connEnd" @click="erector.addConnection(selectedPipe.id, erector.joints[0].id, 0, 'end')">
+            add
+          </button>
+          <button v-if="connEnd" @click="selectedPipe.connections.end = undefined">remove</button>
         </div>
         <div v-if="connEnd">
-          <div>Joint ID: {{ connEnd.jointId }}
+          <div>Joint ID: <select :value="connEnd.jointId"
+              @change="updateConnection($event, selectedPipe.id, connEnd.id, 'jointId')">
+              <option v-for="joint in erector.joints" :value="joint.id">{{ joint.id }} / {{ joint.name }}</option>
+            </select>
           </div>
-          <div>Hole ID: {{ connEnd.holeId }}
+          <div>Hole ID: <select :value="connEnd.holeId"
+              @change="updateConnection($event, selectedPipe.id, connEnd.id, 'holeId')">
+              <option v-for="_, i in connEndJoint?.holes" :value="i">{{ i }}</option>
+            </select>
           </div>
-          <div>Rotation: {{ connEnd.rotation }}
+          <div>Rotation: <input type="number" :value="connEnd.rotation"
+              @change="updateConnection($event, selectedPipe.id, connEnd.id, 'rotation')">
           </div>
         </div>
         <div>
           <h4>Midway Connections</h4>
+          <button @click="erector.addConnection(selectedPipe.id, erector.joints[0].id, 0, 'midway')">add</button>
         </div>
         <div v-if="connMidway" v-for="conn, i in connMidway" :key="i">
-          <div>Joint ID: {{ conn.jointId }}
+          <div><button @click="connMidway.splice(i, 1)">remove</button></div>
+          <div>Joint ID: <select :value="conn.jointId"
+              @change="updateConnection($event, selectedPipe.id, conn.id, 'jointId')">
+              <option v-for="joint in erector.joints" :value="joint.id">{{ joint.id }} / {{ joint.name }}</option>
+            </select>
           </div>
-          <div>Hole ID: {{ conn.holeId }}
+          <div>Hole ID:
+            <select :value="conn.holeId" @change="updateConnection($event, selectedPipe.id, conn.id, 'holeId')">
+              <option v-for="_, j in connMidJoint(i)?.holes" :value="j">{{ j }}</option>
+            </select>
           </div>
-          <div>Rotation: {{ conn.rotation }}
+          <div>Rotation:
+            <input type="number" :value="conn.rotation"
+              @change="updateConnection($event, selectedPipe.id, conn.id, 'rotation')">
           </div>
-          <div>Position: {{ conn.position }}
-          </div>
+          <div>Position: <input type="number" v-model="conn.position" min="0" max="1" step="0.01"> : {{
+            conn.position * selectedPipe.length * 1000 }}mm</div>
         </div>
       </div>
-      </div>
+    </div>
     <div v-if="selectedJoint">
       <div v-if="selectedObject?.obj">
         <div>
@@ -81,9 +126,52 @@ const erector = useErectorPipeJoint()
 const selectedPipe = computed(() => erector.pipes.find(p => p.id === objectSelection.object))
 const selectedJoint = computed(() => erector.joints.find(j => j.id === objectSelection.object))
 const selectedObject = computed(() => erector.instances.find(i => i.id === objectSelection.object))
+
+function lenChange(event: Event, pipe: ErectorPipe) {
+  const target = event.target as HTMLInputElement
+  const value = parseInt(target.value)
+  if (isNaN(value)) { return }
+  erector.updatePipe(pipe.id, 'length', value / 1000)
+}
 const connStart = computed(() => selectedPipe.value?.connections.start)
+const connStartJoint = computed(() => erector.joints.find(j => j.id === connStart.value?.jointId))
 const connEnd = computed(() => selectedPipe.value?.connections.end)
+const connEndJoint = computed(() => erector.joints.find(j => j.id === connEnd.value?.jointId))
 const connMidway = computed(() => selectedPipe.value?.connections.midway)
+const connMidJoint = computed(() => (i: number) => {
+  const conn = selectedPipe.value?.connections.midway[i]
+  if (!conn) return undefined
+  return erector.joints.find(j => j.id === conn.jointId)
+})
+
+function updateConnection(event: Event, pipeId: string, id: string, key: keyof ErectorPipeConnection) {
+  const target = event.target as HTMLSelectElement;
+  const value = target.value;
+  if (!value) return;
+
+  const pipe = erector.pipes.find(p => p.id === pipeId);
+  if (!pipe) return;
+
+  // 接続オブジェクトを取得
+  let connection: ErectorPipeConnection | undefined;
+
+  if (pipe.connections.start?.id === id) {
+    connection = pipe.connections.start;
+  } else if (pipe.connections.end?.id === id) {
+    connection = pipe.connections.end;
+  } else {
+    connection = pipe.connections.midway.find(c => c.id === id);
+  }
+
+  if (!connection) return;
+
+  // 値を適切に設定
+  if (key === 'jointId' || key === 'id') {
+    connection[key] = value;
+  } else {
+    connection[key] = Number.parseFloat(value);
+  }
+}
 
 </script>
 
@@ -94,5 +182,9 @@ const connMidway = computed(() => selectedPipe.value?.connections.midway)
   box-sizing: content-box;
   display: flow-root;
   overflow-y: scroll;
+
+  input {
+    width: 4em;
+  }
 }
 </style>
