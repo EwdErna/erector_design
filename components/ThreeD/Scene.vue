@@ -5,13 +5,36 @@
 </template>
 
 <script lang="ts" setup>
+import { AmbientLight, AxesHelper, DirectionalLight, GridHelper, PerspectiveCamera, Scene, WebGLRenderer, Color, Vector2, Raycaster } from 'three';
 import type { ErectorPipe, ErectorPipeConnection } from '~/types/erector_component';
 import erectorComponentDefinition from '~/data/erector_component.json'
 
 const container = useTemplateRef("container")
+const objectSelection = useObjectSelection()
 const three = useThree()
 let renderer: WebGLRenderer
 let camera: PerspectiveCamera
+const erector = useErectorPipeJoint()
+function selectObject(event: MouseEvent) {
+  const rect = container.value?.getBoundingClientRect()
+  if (!rect) return
+  const mouse = new Vector2((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1)
+  const raycaster = new Raycaster()
+  raycaster.setFromCamera(mouse, camera)
+  const searchObjects = erector.instances.map(v => v.obj).filter(v => v !== undefined)
+  const intersects = raycaster.intersectObjects(searchObjects, true)
+  if (intersects.length > 0) {
+    let rootObject = intersects[0].object
+    while (rootObject.parent) {
+      rootObject = rootObject.parent
+      if (searchObjects.includes(rootObject))
+        break
+    }
+    console.log(rootObject)
+    objectSelection.select(rootObject.name)
+  }
+}
+
 const setupScene = () => {
   if (!container.value) return
 

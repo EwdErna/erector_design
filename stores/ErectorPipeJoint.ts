@@ -1,3 +1,4 @@
+import { defineStore } from 'pinia'
 import { MeshPhongMaterial, Object3D, Scene } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/Addons.js'
 import type { ErectorJoint, ErectorJointHole } from '~/types/erector_component'
