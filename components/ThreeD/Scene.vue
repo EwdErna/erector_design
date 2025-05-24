@@ -5,7 +5,8 @@
 </template>
 
 <script lang="ts" setup>
-import { AmbientLight, AxesHelper, DirectionalLight, GridHelper, PerspectiveCamera, Scene, WebGLRenderer, Color, Vector2, Raycaster } from 'three';
+import { AmbientLight, AxesHelper, DirectionalLight, GridHelper, PerspectiveCamera, Scene, WebGLRenderer, Color, Vector2, Raycaster, Quaternion, Vector3 } from 'three';
+import { GLTFLoader } from 'three/examples/jsm/Addons.js';
 import type { ErectorPipe, ErectorPipeConnection } from '~/types/erector_component';
 import erectorComponentDefinition from '~/data/erector_component.json'
 
@@ -15,6 +16,57 @@ const three = useThree()
 let renderer: WebGLRenderer
 let camera: PerspectiveCamera
 const erector = useErectorPipeJoint()
+function instanciate(structure: { pipes: ErectorPipe[], joints: { id: string, name: string }[] }) {
+  if (!three.scene) return;
+  const scene = three.scene
+  structure.pipes.forEach(pipe => {
+    // erectorにpipeを追加
+    if (erector.pipes.findIndex(p => p.id === pipe.id) === -1) {
+      erector.addPipe(scene, pipe.diameter, pipe.length, pipe.id)
+    }
+    // pipeの接続に使うjointを追加
+    const jointInstanciate = (conn: ErectorPipeConnection) => {
+      if (erector.joints.findIndex(j => j.id === conn.jointId) === -1) {
+        const joint = structure.joints.find(joint => joint.id === conn.jointId)
+        if (!joint) { return }// 接続先のjointがない。よろしくない
+        const jointCategoryDefinition = erectorComponentDefinition.pla_joints.categories.find(c => c.types.some(t => t.name === joint.name))
+        if (!jointCategoryDefinition) { return }//接続先のjointがない。よろしくない
+        const jointDefinition = (jointCategoryDefinition?.types as { name: string, joints?: { to: [number, number, number], start?: [number, number, number], through?: boolean }[] }[]).find(t => t.name === joint.name)
+        if (!jointDefinition) { return }//未知のjoint。よろしくない
+        if (!jointDefinition.joints) { return }//接続先のjointが定義されていない。TBD
+        erector.addJoint(scene, joint.name, jointCategoryDefinition.name, jointDefinition.joints.map(j => {
+          return {
+            type: j.through !== true ? 'FIX' as const : "THROUGH" as const,
+            dir: new Quaternion().setFromUnitVectors(new Vector3(0, 0, 1), new Vector3().fromArray(j.to)),
+            offset: new Vector3().fromArray(j.start ?? [0, 0, 0])
+          }
+        }), joint.id)
+      }
+    }
+    if (pipe.connections.start) {
+      jointInstanciate(pipe.connections.start)
+      const startConnection = erector.pipes.find(p => p.id === pipe.id)?.connections.start
+      if (startConnection) {
+        //既に接続済み。BAD STRUCTURE
+      } else erector.addConnection(pipe.id, pipe.connections.start.jointId, pipe.connections.start.holeId, "start")
+    }
+    if (pipe.connections.end) {
+      jointInstanciate(pipe.connections.end)
+      const endConnection = erector.pipes.find(p => p.id === pipe.id)?.connections.end
+      if (endConnection) {
+        //既に接続済み。BAD STRUCTURE
+      } else erector.addConnection(pipe.id, pipe.connections.end.jointId, pipe.connections.end.holeId, "end", pipe.connections.end.rotation, pipe.connections.end.position)
+    }
+    pipe.connections.midway.forEach(conn => {
+      jointInstanciate(conn)
+      const midwayConnection = erector.pipes.find(p => p.id === pipe.id)?.connections.midway
+      if (midwayConnection?.find(c => c.jointId === conn.jointId && c.holeId === conn.holeId)) {
+        //既に接続済み。BAD STRUCTURE
+      } else erector.addConnection(pipe.id, conn.jointId, conn.holeId, "midway", conn.rotation, conn.position)
+    })
+  })
+}
+
 function selectObject(event: MouseEvent) {
   const rect = container.value?.getBoundingClientRect()
   if (!rect) return
@@ -104,6 +156,8 @@ const setupScene = () => {
 
   const axesHelper = new AxesHelper(5)
   scene.add(axesHelper)
+
+  instanciate(erector_structure)
   const ambientLight = new AmbientLight(0xffffff, 0.5)
   scene.add(ambientLight)
   const directionalLight = new DirectionalLight(0xffffff)
