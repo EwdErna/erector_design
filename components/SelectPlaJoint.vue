@@ -15,7 +15,7 @@
         </div>
         <div class="page">
           <div class="item" v-for="t in selectedTypes">
-            <div>
+            <div @click="addJointToScene(t.name, selected.category)">
               <h4>{{ t.name }}</h4>
               <div class="preview">
                 <img src="#" :alt="t.name">
@@ -29,6 +29,7 @@
 </template>
 
 <script lang="ts" setup>
+import { Quaternion, Scene, Vector3 } from 'three';
 import type { PropType } from 'vue';
 import type { ErectorJointComponent } from '~/types/erector_component';
 
@@ -50,6 +51,24 @@ const selected = useState<{
 const selectedTypes = computed(() => {
   return components.pla_joints.categories.find(category => category.name === selected.value.category)?.types || []
 })
+function addJointToScene(name: string, category: string) {
+  const scene: Scene | undefined = useThree().scene
+  if (!scene) { return }
+  const joint = components.pla_joints.categories.find(c => c.name === category)?.types.find(t => t.name === name)
+  if (!joint?.joints) { return }
+  // Add the joint to the scene
+  // This is a placeholder for the actual implementation
+  console.log(`Adding joint ${name} of category ${category} to the scene`)
+  const erector = useErectorPipeJoint()
+  const added_id = erector.addJoint(scene, name, category, joint.joints.map(j => {
+    return {
+      type: j.through !== true ? 'FIX' as const : "THROUGH" as const,
+      dir: new Quaternion().setFromUnitVectors(new Vector3(0, 0, 1), new Vector3().fromArray(j.to)),
+      offset: new Vector3().fromArray(j.start ?? [0, 0, 0])
+    }
+  }))
+  console.log(`added ${added_id}`)
+}
 </script>
 
 <style scoped>
