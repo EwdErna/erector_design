@@ -3,10 +3,13 @@
     <nav>Navigation</nav>
     <main>
       <section class="left">
+        <SelectComponents></SelectComponents>
       </section>
       <section class="main">
+        <ThreeDScene></ThreeDScene>
       </section>
       <section class="right">
+        <EditComponent></EditComponent>
       </section>
     </main>
     <footer></footer>
