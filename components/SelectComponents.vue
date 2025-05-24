@@ -3,6 +3,7 @@
         <h2>Components</h2>
         <SelectPipe :pipe="components.pipe"></SelectPipe>
         <SelectPlaJoint :pla_joints="components.pla_joints"></SelectPlaJoint>
+        <SelectMetalJoint :metal_joints="components.metal_joints"></SelectMetalJoint>
     </div>
 </template>
 
