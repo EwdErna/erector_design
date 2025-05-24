@@ -22,3 +22,7 @@ logs
 .env
 .env.*
 !.env.example
+
+# data
+data/
+!data/erector_component.json
