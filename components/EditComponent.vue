@@ -175,13 +175,13 @@ function updateConnection(event: Event, pipeId: string, id: string, key: keyof E
 
 </script>
 
-<style>
+<style scoped>
 .container {
   height: 100%;
   width: 100%;
   box-sizing: content-box;
   display: flow-root;
-  overflow-y: scroll;
+  overflow-y: auto;
 
   input {
     width: 4em;
