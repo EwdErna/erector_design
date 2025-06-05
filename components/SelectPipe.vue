@@ -106,6 +106,8 @@ const addPipeToScene = () => {
     margin: 5px 10px;
     background-color: #f9f9f9;
     border-radius: 5px;
+    height: 150px;
+    overflow-y: auto;
 
     .length-item {
       padding: 5px 10px;

@@ -13,12 +13,14 @@
           </div>
           <div class="overlay"></div>
         </div>
-        <div class="page">
-          <div class="item" v-for="t in selectedTypes">
-            <div @click="addJointToScene(t.name, selected.category)">
-              <h4>{{ t.name }}</h4>
-              <div class="preview">
-                <img src="#" :alt="t.name">
+        <div class="page-container">
+          <div class="page">
+            <div class="item" v-for="t in selectedTypes">
+              <div @click="addJointToScene(t.name, selected.category)">
+                <h4>{{ t.name }}</h4>
+                <div class="preview">
+                  <img :src="`./models/${selected.category}/erector_component-${t.name}.png`" :alt="t.name">
+                </div>
               </div>
             </div>
           </div>
@@ -94,8 +96,28 @@ function addJointToScene(name: string, category: string) {
         display: flex;
         justify-content: space-between;
         margin-bottom: 10px;
-        overflow: scroll;
+        overflow-x: scroll;
         scrollbar-width: none;
+
+        background: linear-gradient(90deg,
+            rgb(240, 240, 240) 50%,
+            rgb(240, 240, 240, 0)),
+          linear-gradient(90deg,
+            rgb(240, 240, 240, 0),
+            rgb(240, 240, 240) 50%) 0 100%,
+          linear-gradient(90deg,
+            rgb(128, 195, 255) 50%,
+            transparent),
+          linear-gradient(90deg,
+            transparent,
+            rgb(128, 195, 255) 50%) 0 100%;
+        background-color: #f0f0f0;
+        background-repeat: no-repeat;
+        background-attachment: local, local, scroll, scroll;
+        background-position: 0 0, 100%, 0 0, 100%;
+        background-size: 60px 100%,
+          60px 100%, 30px 100%,
+          30px 100%;
 
         &::-webkit-scrollbar {
           display: none;
@@ -105,7 +127,6 @@ function addJointToScene(name: string, category: string) {
           padding: 10px;
           cursor: pointer;
           border-radius: 5px;
-          background-color: #f0f0f0;
           transition: background-color 0.3s;
 
           &.selected {
@@ -116,38 +137,48 @@ function addJointToScene(name: string, category: string) {
       }
     }
 
-    .page {
-      display: flex;
-      flex-wrap: wrap;
-      height: 450px;
-      gap: 10px;
-      padding: 10px;
+    .page-container {
+      width: 100%;
+      height: 250px;
+      overflow-y: auto;
       background-color: #f9f9f9;
-      border-radius: 5px;
 
-      .item {
-        width: 100px;
-        height: 100px;
-        background-color: #f9f9f9;
-        border-radius: 5px;
+      .page {
         display: flex;
-        justify-content: center;
-        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px;
+        padding: 10px;
+        border-radius: 5px;
 
-        &:hover {
-          background-color: #f0f0f0;
-        }
-
-        .preview {
-          width: 80%;
-          height: 80%;
+        .item {
+          width: 100px;
+          height: 100px;
+          background-color: #f0f0f9;
+          border-radius: 5px;
           display: flex;
           justify-content: center;
-          align-items: center;
 
-          img {
-            max-width: 100%;
-            max-height: 100%;
+          &:hover {
+            background-color: #e0e0f0;
+          }
+
+          h4 {
+            margin: 0;
+          }
+
+          .preview {
+            margin: 0 10%;
+            width: 80%;
+            flex-grow: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+
+            img {
+              max-width: 100%;
+              max-height: 100%;
+              background-color: #000000;
+            }
           }
         }
       }

@@ -22,6 +22,6 @@ const components = components_json as ErectorComponent
     width: 100%;
     box-sizing: content-box;
     display: flow-root;
-    overflow-y: scroll;
+    overflow-y: auto;
 }
 </style>
