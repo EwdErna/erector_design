@@ -149,17 +149,105 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
     },
     worldPosition() {
       const updated: string[] = []
+      const nextUpdate: string[] = []
+      const pipes = this.pipes
       const joints = this.joints
       const instances = this.instances
       const renderCount = this.renderCount++
       function update(updated: string[], pipe: ErectorPipe, pipeTransform: transform) {
-        if (updated.includes(pipe.id)) {
+        if (!updated.includes(pipe.id)) {
+          if (renderCount === 0) console.log(pipe)
+          // 一つ以上のjointが更新済みなのでそれを探し、pipe自身の座標を更新してupdatedに追加し離脱
+          // nextUpdateにまだいるので、次の周回で上のif句に入りpipeに接続された他のjointの座標が更新される
+          const start = pipe.connections.start
+          const end = pipe.connections.end
+          if (start && updated.includes(start.jointId)) {
+            const joint = joints.find(joint => joint.id === start.jointId)
+            const jointInstance = instances.find(i => i.id === start.jointId)?.obj
+            if (joint && jointInstance) {
+              const hole = joint.holes[start.holeId]
+              if (hole) {
+                updated.push(pipe.id)
+                const position = jointInstance.position.clone().add(hole.offset.clone().applyEuler(jointInstance.rotation))
+                const rotation = new Quaternion().setFromEuler(jointInstance.rotation).multiply(hole.dir.clone())
+                pipeTransform.position.set(...position.toArray())
+                pipeTransform.rotation.set(...rotation.toArray())
+                // 座標を更新したのでもう離脱していい
+                if (renderCount === 0) {
+                  console.log(`updated pipe ${pipe.id} by start connection ${start.id}`)
+                }
+              }
+            }
+          }
+          else if (end && updated.includes(end.jointId)) {
+            const joint = joints.find(joint => joint.id === end.jointId)
+            const jointInstance = instances.find(i => i.id === end.jointId)?.obj
+            if (joint && jointInstance) {
+              const hole = joint.holes[end.holeId]
+              if (hole) {
+                updated.push(pipe.id)
+                const position = jointInstance.position.clone().add(hole.offset.clone().applyEuler(jointInstance.rotation))
+                const rotation = new Quaternion().setFromEuler(jointInstance.rotation).multiply(hole.dir.clone())
+                pipeTransform.position.set(...position.toArray())
+                pipeTransform.rotation.set(...rotation.toArray())
+                // 座標を更新したのでもう離脱していい
+                if (renderCount === 0) {
+                  console.log(`updated pipe ${pipe.id} by end connection ${end.id}`)
+                }
+              }
+            }
+          }
+          else {
+            const midway = pipe.connections.midway.find(conn => updated.includes(conn.jointId)) //複数更新済みでも、pipeを複数回更新することはないので、最初に見つかったものを使う
+            if (midway) {
+              const joint = joints.find(joint => joint.id === midway.jointId)
+              const jointInstance = instances.find(i => i.id === midway.jointId)?.obj
+              if (joint && jointInstance) {
+                const hole = joint.holes[midway.holeId]
+                if (hole) {
+                  updated.push(pipe.id)
+                  const position = jointInstance.position.clone().add(hole.offset.clone().applyEuler(jointInstance.rotation))
+                  const rotation = new Quaternion().setFromEuler(jointInstance.rotation).multiply(hole.dir.clone())
+                  pipeTransform.position.set(...position.toArray())
+                  pipeTransform.rotation.set(...rotation.toArray())
+                  // 座標を更新したのでもう離脱していい
+                  if (renderCount === 0) {
+                    console.log(`updated pipe ${pipe.id} by midway connection ${midway.id}`)
+                  }
+                }
+              }
+            }
+          }
+          if (!updated.includes(pipe.id)) {
+            console.log(`Pipe ${pipe.id} is not updated, but should be!`)
+            // モデルのロードが済んでいないときにここに来ることがあるので、とりあえず放置
+            return;
+          }
+        }
+        if (updated.includes(pipe.id)) {// 上で更新済みのpipeはここで処理する
+          // nextUpdateにいたら消す
+          const nextIndex = nextUpdate.indexOf(pipe.id)
+          if (nextIndex !== -1) {
+            nextUpdate.splice(nextIndex, 1)
+          }
           // jointのみ更新
           if (renderCount === 0) console.log(pipe)
           if (pipe.connections.start) {
             const start = pipe.connections.start
             const joint = joints.find(joint => joint.id === start.jointId)
             if (joint) {
+              // jointの各holeについて、つながっているパイプを探し、updatedにもnextUpdateにもいなければ、nextUpdateに追加
+              joint.holes.forEach((hole, index) => {
+                const next_start = pipes.find(p =>
+                  ((p.connections.start?.jointId === joint.id && p.connections.start?.holeId === index) || //startか
+                    (p.connections.end?.jointId === joint.id && p.connections.end?.holeId === index) || //endか
+                    p.connections.midway.some(conn => conn.jointId === joint.id && conn.holeId === index) //midwayに接続していて
+                  ) && !updated.includes(p.id) && !nextUpdate.includes(p.id) //まだ更新されていない・更新予定でもないパイプ 今見ているpipeはupdatedにいるはずなので引っかからない
+                )
+                if (next_start) { //があったら更新予定に追加
+                  nextUpdate.push(next_start.id)
+                }
+              })
               const hole = joint.holes[start.holeId]
               if (updated.includes(pipe.connections.start.jointId)) {
                 // 更新の必要なし
@@ -193,6 +281,17 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
             const end = pipe.connections.end
             const joint = joints.find(joint => joint.id === end.jointId)
             if (joint) {
+              joint.holes.forEach((hole, index) => {
+                const next_start = pipes.find(p =>
+                  ((p.connections.start?.jointId === joint.id && p.connections.start?.holeId === index) || //startか
+                    (p.connections.end?.jointId === joint.id && p.connections.end?.holeId === index) || //endか
+                    p.connections.midway.some(conn => conn.jointId === joint.id && conn.holeId === index) //midwayに接続していて
+                  ) && !updated.includes(p.id) && !nextUpdate.includes(p.id) //まだ更新されていない・更新予定でもないパイプ
+                )
+                if (next_start) { //があったら更新予定に追加
+                  nextUpdate.push(next_start.id)
+                }
+              })
               const hole = joint.holes[end.holeId]
               if (updated.includes(pipe.connections.end.jointId)) {
                 // 更新の必要なし
@@ -216,6 +315,17 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
           pipe.connections.midway.forEach(conn => {
             const joint = joints.find(joint => joint.id === conn.jointId)
             if (joint) {
+              joint.holes.forEach((hole, index) => {
+                const next_start = pipes.find(p =>
+                  ((p.connections.start?.jointId === joint.id && p.connections.start?.holeId === index) || //startか
+                    (p.connections.end?.jointId === joint.id && p.connections.end?.holeId === index) || //endか
+                    p.connections.midway.some(conn => conn.jointId === joint.id && conn.holeId === index) //midwayに接続していて
+                  ) && !updated.includes(p.id) && !nextUpdate.includes(p.id) //まだ更新されていない・更新予定でもないパイプ
+                )
+                if (next_start) { //があったら更新予定に追加
+                  nextUpdate.push(next_start.id)
+                }
+              })
               const hole = joint.holes[conn.holeId]
               if (updated.includes(conn.jointId)) {
                 // 更新の必要なし
@@ -242,123 +352,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
               }
             }
           })
-        } else {
-          if (renderCount === 0) console.log(pipe)
-          // jointの座標が一つ以上確定していれば、それをもとに更新
-          // 一つも確定していなければ一旦無視→後で見るリストが必要
-          const start = pipe.connections.start
-          const end = pipe.connections.end
-          if (start && updated.includes(start.jointId)) {
-            const joint = joints.find(joint => joint.id === start.jointId)
-            const jointInstance = instances.find(i => i.id === start.jointId)?.obj
-            if (joint && jointInstance) {
-              const hole = joint.holes[start.holeId]
-              if (hole) {
-                updated.push(pipe.id)
-                const position = jointInstance.position.clone().add(hole.offset.clone().applyEuler(jointInstance.rotation))
-                const rotation = new Quaternion().setFromEuler(jointInstance.rotation).multiply(hole.dir.clone())
-                pipeTransform.position.set(...position.toArray())
-                pipeTransform.rotation.set(...rotation.toArray())
-              }
-            }
-          }
-          else if (end && updated.includes(end.jointId)) { }
-          else {
-            const midway = pipe.connections.midway.find(conn => updated.includes(conn.jointId))
-            if (midway) { }
-          }
         }
-        // if (pipe.connections.start) {
-        //   const start = pipe.connections.start
-        //   const joint = joints.find(joint => joint.id === start.jointId)
-        //   if (joint) {
-        //     const hole = joint.holes[start.holeId]
-        //     if (updated.includes(pipe.connections.start.jointId)) {
-        //       //jointの座標は確定しているので、pipeの座標を更新するべし
-        //     }
-        //     else {
-        //       updated.push(pipe.connections.start.jointId)
-        //       if (hole) {
-        //         /*Unity C#
-        //           var startJoint = ErectorJoint.joints.Where(j => j.id == start.j_id).First();
-        //           var startHole = startJoint.holes.Where((h) => h.id == start.h_id).First();
-        //           var r = transform.rotation
-        //             * Quaternion.Inverse(Quaternion.Euler(startHole.rotation) * Quaternion.AngleAxis(-start.rot, Vector3.forward));
-        //           startJoint.transform.rotation = r;
-        //           startJoint.transform.position = transform.position + r * -startHole.offset;
-        //          */
-        //         const holeDir = new Euler().setFromQuaternion(hole.dir)
-        //         console.log(`${holeDir.x}, ${holeDir.y}, ${holeDir.z}`)
-        //         const pipeZRot = new Quaternion().setFromEuler(new Euler(0, 0, start.rotation / 180 * Math.PI))
-        //         const invertedHoleDir = hole.dir.clone().multiply(pipeZRot).invert()
-        //         const rotation = pipeTransform.rotation.clone().multiply(invertedHoleDir)
-        //         const rotatedHoleOffset = hole.offset.clone().applyQuaternion(rotation)
-        //         const position = pipeTransform.position.clone().add(rotatedHoleOffset.clone().negate())
-        //         const target = instances.find(i => i.id === joint.id)?.obj;
-        //         target?.position.set(...position.toArray())
-        //         target?.rotation.setFromQuaternion(rotation)
-        //       }
-        //     }
-        //   }
-        // }
-        // if (pipe.connections.end) {
-        //   const end = pipe.connections.end
-        //   const joint = joints.find(joint => joint.id === end.jointId)
-        //   if (joint) {
-        //     const hole = joint.holes[end.holeId]
-        //     if (updated.includes(pipe.connections.end.jointId)) {
-        //       //jointの座標は確定しているので、pipeの座標を更新するべし
-        //     }
-        //     else {
-        //       updated.push(pipe.connections.end.jointId)
-        //       if (hole) {
-        //         /*Unity C#
-        //           var endJoint = ErectorJoint.joints.Where(j => j.id == end.j_id).First();
-        //           var endHole = endJoint.holes.Where((h) => h.id == end.h_id).First();
-        //           var r = transform.rotation * Quaternion.AngleAxis(180, transform.up) * Quaternion.Inverse(Quaternion.Euler(endHole.rotation) * Quaternion.AngleAxis(-end.rot, Vector3.forward));
-        //           endJoint.transform.rotation = r;
-        //           endJoint.transform.position = transform.position + transform.forward * pipeLength / 1000 + r * -endHole.offset;
-        //         */
-        //         const rotation = pipeTransform.rotation.clone()
-        //           .multiply(new Quaternion().setFromEuler(new Euler(0, Math.PI, 0))
-        //             .multiply(hole.dir.clone()
-        //               .multiply(new Quaternion().setFromEuler(new Euler(0, 0, end.rotation / 180 * Math.PI))).invert()))
-        //         const position = pipeTransform.position.clone().add(new Vector3(0, 0, 1).applyQuaternion(pipeTransform.rotation).multiplyScalar(pipe.length)).add(hole.offset.clone().negate().applyQuaternion(rotation))
-        //         const target = instances.find(i => i.id === joint.id)?.obj;
-        //         target?.position.set(...position.toArray())
-        //         target?.rotation.setFromQuaternion(rotation)
-        //       }
-        //     }
-        //   }
-        // }
-        // pipe.connections.midway.forEach(conn => {
-        //   const joint = joints.find(joint => joint.id === conn.jointId)
-        //   if (joint) {
-        //     const hole = joint.holes[conn.holeId]
-        //     if (updated.includes(conn.jointId)) {
-        //       //jointの座標は確定しているので、pipeの座標を更新するべし
-        //     }
-        //     else {
-        //       updated.push(conn.jointId)
-        //       if (hole && hole.type === "THROUGH") {//midwayにはfixはつけられない
-        //         /*Unity C#
-        //           var joint = ErectorJoint.joints.Where(j => j.id == conn.j_id).First();
-        //           var hole = joint.holes.Where((h) => h.id == conn.h_id).First();
-        //           var r = transform.rotation * Quaternion.AngleAxis(180, transform.up) * Quaternion.Inverse(Quaternion.Euler(hole.rotation) * Quaternion.AngleAxis(-conn.rot, Vector3.forward));
-        //           joint.transform.rotation = r;
-        //           joint.transform.position = transform.position + transform.forward * (pipeLength / 1000f * conn.axis_pos / 100f) + r * -hole.offset;
-        //          */
-        //         const rotation = pipeTransform.rotation.clone()
-        //           .multiply(hole.dir.clone()
-        //             .multiply(new Quaternion().setFromEuler(new Euler(0, 0, conn.rotation / 180 * Math.PI))).invert())
-        //         const position = pipeTransform.position.clone().add(new Vector3(0, 0, 1).applyQuaternion(pipeTransform.rotation).multiplyScalar(pipe.length * conn.position)).add(hole.offset.clone().applyQuaternion(rotation))
-        //         const target = instances.find(i => i.id === joint.id)?.obj;
-        //         target?.position.set(...position.toArray())
-        //         target?.rotation.setFromQuaternion(rotation)
-        //       }
-        //     }
-        //   }
-        // })
       }
 
       return (rootTransform: transform) => {// 構造のrootとなるpipeのidと座標・回転を受け取る
@@ -368,16 +362,22 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
         rootObject?.position.set(...rootTransform.position.toArray())
         rootObject?.rotation.setFromQuaternion(rootTransform.rotation)
         updated.push(root.id)
-        update(updated, root, rootTransform)
-        this.pipes.reduce((a: ErectorPipe[], v) => v.id === root.id ? a : [...a, v], []).forEach(pipe => {
-          const pipeObject = this.instances.find(i => i.id === pipe.id)?.obj
-          if (!pipeObject) return
-          update(updated, pipe, {
+        nextUpdate.push(root.id)
+        while (nextUpdate.length > 0) {
+          const pipeId = nextUpdate.shift()
+          if (renderCount === 0) console.log(`nextUpdate: ${pipeId}`)
+          if (!pipeId) continue
+          const pipe = pipes.find(pipe => pipe.id === pipeId)
+          if (!pipe) continue
+          const pipeObject = instances.find(i => i.id === pipeId)?.obj
+          if (!pipeObject) continue
+          const updatedTransform: transform = {
             id: pipe.id,
             position: pipeObject.position,
             rotation: pipeObject.quaternion
-          })
-        })
+          }
+          update(updated, pipe, updatedTransform)
+        }
       }
     },
     newPipeId() {
