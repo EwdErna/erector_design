@@ -1,6 +1,8 @@
 <template>
   <div class="app-container">
-    <nav>Navigation</nav>
+    <nav>
+      <Navigation></Navigation>
+    </nav>
     <main>
       <section class="left">
         <SelectComponents></SelectComponents>
