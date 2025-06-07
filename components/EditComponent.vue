@@ -3,6 +3,8 @@
     <h2>Edit Component</h2>
     <h3>{{ objectSelection.object }}</h3>
     <div v-if="selectedPipe">
+      <div><button @click="removeObject(selectedPipe)">remove</button></div>
+      <hr>
       <div v-if="selectedObject?.obj">
         <div>
           position: <input type="number" :value="selectedObject.obj.position.x"
@@ -101,6 +103,8 @@
       </div>
     </div>
     <div v-if="selectedJoint">
+      <div><button @click="removeObject(selectedJoint)">remove</button></div>
+      <hr>
       <div v-if="selectedObject?.obj">
         <div>
           position:{{ selectedObject.obj.position.x }} , {{ selectedObject.obj.position.y }} ,
@@ -119,7 +123,7 @@
 
 <script lang="ts" setup>
 import { useObjectSelection } from '~/stores/ObjectSelection';
-import type { ErectorPipe, ErectorPipeConnection } from '~/types/erector_component';
+import { isErectorPipe, type ErectorJoint, type ErectorPipe, type ErectorPipeConnection } from '~/types/erector_component';
 
 const objectSelection = useObjectSelection()
 const erector = useErectorPipeJoint()
@@ -143,6 +147,29 @@ const connMidJoint = computed(() => (i: number) => {
   if (!conn) return undefined
   return erector.joints.find(j => j.id === conn.jointId)
 })
+
+function removeObject(obj: ErectorPipe | ErectorJoint) {
+  // erector.pipesもしくはerector.jointsから削除
+  // もしerector.instancesに存在するなら、そちらも削除
+  const id = obj.id;
+  const obj_idx = erector.instances.findIndex(i => i.id === id);
+  if (isErectorPipe(obj)) {
+    erector.pipes.splice(erector.pipes.findIndex(p => p.id === id), 1);
+  } else {
+    erector.joints.splice(erector.joints.findIndex(j => j.id === id), 1);
+  }
+  if (obj_idx !== -1) {
+    const scene = useThree().scene
+    if (scene) {
+      const instance = erector.instances[obj_idx];
+      if (instance.obj) {
+        scene.remove(instance.obj);
+      }
+      erector.instances.splice(obj_idx, 1);
+      objectSelection.object = '';
+    }
+  }
+}
 
 function updateConnection(event: Event, pipeId: string, id: string, key: keyof ErectorPipeConnection) {
   const target = event.target as HTMLSelectElement;
