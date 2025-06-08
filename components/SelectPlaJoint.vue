@@ -167,16 +167,16 @@ function addJointToScene(name: string, category: string) {
           }
 
           .preview {
-            margin: 0 10%;
-            width: 80%;
+            margin: 0 10px;
+            width: 80px;
             flex-grow: 1;
             display: flex;
             justify-content: center;
             align-items: center;
 
             img {
-              max-width: 100%;
-              max-height: 100%;
+              width: 100%;
+              height: 100%;
               background-color: #000000;
             }
           }
