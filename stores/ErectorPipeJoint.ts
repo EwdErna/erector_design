@@ -5,6 +5,7 @@ import { generateUUID } from 'three/src/math/MathUtils.js'
 import type { ErectorJoint, ErectorJointHole, ErectorPipe, ErectorPipeConnection } from '~/types/erector_component'
 import { genPipe } from '~/utils/Erector/pipe'
 export type transform = { id: string, position: Vector3, rotation: Quaternion }
+import erectorComponentDefinition from '~/data/erector_component.json'
 export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
   state: () => ({
     pipes: [] as ErectorPipe[],
@@ -140,6 +141,56 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
           pipe.connections.midway.splice(index, 1)
         }
       }
+    },
+    loadFromStructure(structure: { pipes: ErectorPipe[], joints: { id: string, name: string }[], rootTransform?: { pipeId: string, position: [number, number, number], rotation: [number, number, number, number] } }) {
+      const three = useThree()
+      if (!three.scene) return;
+      const scene = three.scene
+      structure.pipes.forEach(pipe => {
+        // erectorにpipeを追加
+        if (this.pipes.findIndex(p => p.id === pipe.id) === -1) {
+          this.addPipe(scene, pipe.diameter, pipe.length, pipe.id)
+        }
+        // pipeの接続に使うjointを追加
+        const jointInstanciate = (conn: ErectorPipeConnection) => {
+          if (this.joints.findIndex(j => j.id === conn.jointId) === -1) {
+            const joint = structure.joints.find(joint => joint.id === conn.jointId)
+            if (!joint) { return }// 接続先のjointがない。よろしくない
+            const jointCategoryDefinition = erectorComponentDefinition.pla_joints.categories.find(c => c.types.some(t => t.name === joint.name))
+            if (!jointCategoryDefinition) { return }//接続先のjointがない。よろしくない
+            const jointDefinition = (jointCategoryDefinition?.types as { name: string, joints?: { to: [number, number, number], start?: [number, number, number], through?: boolean }[] }[]).find(t => t.name === joint.name)
+            if (!jointDefinition) { return }//未知のjoint。よろしくない
+            if (!jointDefinition.joints) { return }//接続先のjointが定義されていない。TBD
+            this.addJoint(scene, joint.name, jointCategoryDefinition.name, jointDefinition.joints.map(j => {
+              return {
+                type: j.through !== true ? 'FIX' as const : "THROUGH" as const,
+                dir: new Quaternion().setFromUnitVectors(new Vector3(0, 0, 1), new Vector3().fromArray(j.to)),
+                offset: new Vector3().fromArray(j.start ?? [0, 0, 0])
+              }
+            }), joint.id)
+          }
+        }
+        if (pipe.connections.start) {
+          jointInstanciate(pipe.connections.start)
+          const startConnection = this.pipes.find(p => p.id === pipe.id)?.connections.start
+          if (startConnection) {
+            //既に接続済み。BAD STRUCTURE
+          } else this.addConnection(pipe.id, pipe.connections.start.jointId, pipe.connections.start.holeId, "start")
+        }
+        if (pipe.connections.end) {
+          jointInstanciate(pipe.connections.end)
+          const endConnection = this.pipes.find(p => p.id === pipe.id)?.connections.end
+          if (endConnection) {
+            //既に接続済み。BAD STRUCTURE
+          } else this.addConnection(pipe.id, pipe.connections.end.jointId, pipe.connections.end.holeId, "end", pipe.connections.end.rotation, pipe.connections.end.position)
+        } pipe.connections.midway.forEach(conn => {
+          jointInstanciate(conn)
+          const midwayConnection = this.pipes.find(p => p.id === pipe.id)?.connections.midway
+          if (midwayConnection?.find(c => c.jointId === conn.jointId && c.holeId === conn.holeId)) {
+            //既に接続済み。BAD STRUCTURE
+          } else this.addConnection(pipe.id, conn.jointId, conn.holeId, "midway", conn.rotation, conn.position)
+        })
+      })
     }
   },
   getters: {
