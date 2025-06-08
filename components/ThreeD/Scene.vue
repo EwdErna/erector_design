@@ -173,9 +173,21 @@ const setupScene = () => {
 }
 const animate = (scene: Scene) => {
   if (!scene) return;
+  if (!erector.pipes.find(p => p.id === rootPipeId)) {
+    rootPipeObject.value = undefined
+    if (erector.pipes.length === 0) {
+      //console.log("No pipes in erector")
+    } else {
+      console.log("rootPipeId not found in erector pipes, resetting to first instance")
+      rootPipeId = erector.instances[0].id
+      rootPipeObject.value = erector.instances.find(i => i.id === rootPipeId)?.obj
+    }
+  } if (rootPipeObject.value) {
 erector.worldPosition({
     id: rootPipeId, position: rootPipeObject.value?.position.clone() ?? new Vector3(), rotation: new Quaternion().setFromEuler(rootPipeObject.value?.rotation ?? new Euler(0, 0, 0))
   })
+  }
+
   requestAnimationFrame(() => animate(scene))
   renderer.render(scene, camera)
 }
