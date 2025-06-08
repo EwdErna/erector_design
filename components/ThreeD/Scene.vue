@@ -7,6 +7,7 @@
 <script lang="ts" setup>
 import { AmbientLight, AxesHelper, DirectionalLight, GridHelper, PerspectiveCamera, Scene, WebGLRenderer, Color, Vector2, Raycaster, Quaternion, Vector3, Euler, Object3D } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/Addons.js';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { ErectorPipe, ErectorPipeConnection } from '~/types/erector_component';
 
 const container = useTemplateRef("container")
@@ -14,6 +15,7 @@ const objectSelection = useObjectSelection()
 const three = useThree()
 let renderer: WebGLRenderer
 let camera: PerspectiveCamera
+let controls: OrbitControls
 let rootPipeId: string
 const erector = useErectorPipeJoint()
 const rootPipeObject: Ref<Object3D | undefined> = ref()
@@ -101,6 +103,14 @@ const setupScene = () => {
   camera.translateY(.5)
   camera.translateZ(.5)
   camera.lookAt(0, 0, 0)
+  // OrbitControlsの初期化
+  controls = new OrbitControls(camera, renderer.domElement)
+  controls.enableDamping = true
+  controls.dampingFactor = 0.05
+  controls.screenSpacePanning = true
+  controls.minDistance = 0.1
+  controls.maxDistance = 100
+  controls.maxPolarAngle = Math.PI
 
   const gridHelper = new GridHelper(10, 10)
   scene.add(gridHelper)
@@ -132,10 +142,13 @@ const animate = (scene: Scene) => {
       rootPipeObject.value = erector.instances.find(i => i.id === rootPipeId)?.obj
     }
   } if (rootPipeObject.value) {
-erector.worldPosition({
-    id: rootPipeId, position: rootPipeObject.value?.position.clone() ?? new Vector3(), rotation: new Quaternion().setFromEuler(rootPipeObject.value?.rotation ?? new Euler(0, 0, 0))
-  })
+    erector.worldPosition({
+      id: rootPipeId, position: rootPipeObject.value?.position.clone() ?? new Vector3(), rotation: new Quaternion().setFromEuler(rootPipeObject.value?.rotation ?? new Euler(0, 0, 0))
+    })
   }
+
+  // OrbitControlsの更新
+  controls.update()
 
   requestAnimationFrame(() => animate(scene))
   renderer.render(scene, camera)
@@ -147,6 +160,7 @@ const handleResize = () => {
   camera.aspect = w / h
   camera.updateProjectionMatrix()
   renderer.setSize(w, h)
+  controls.update()
 }
 onMounted(() => {
   setupScene()
@@ -154,6 +168,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
+  if (controls) controls.dispose()
   if (renderer) renderer.dispose()
 })
 </script>
