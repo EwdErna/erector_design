@@ -142,6 +142,37 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
         }
       }
     },
+    clearAll() {
+      const three = useThree()
+      if (!three.scene) return;
+      const scene = three.scene
+
+      // Remove all instances from the scene
+      this.instances.forEach(instance => {
+        if (instance.obj) {
+          scene.remove(instance.obj)
+          // Dispose of geometry and materials to free memory
+          instance.obj.traverse((child) => {
+            if (child instanceof Mesh) {
+              if (child.geometry) child.geometry.dispose()
+              if (child.material) {
+                if (Array.isArray(child.material)) {
+                  child.material.forEach(material => material.dispose())
+                } else {
+                  child.material.dispose()
+                }
+              }
+            }
+          })
+        }
+      })
+
+      // Clear all data arrays
+      this.pipes = []
+      this.joints = []
+      this.instances = []
+      this.renderCount = 0
+    },
     loadFromStructure(structure: { pipes: ErectorPipe[], joints: { id: string, name: string }[], rootTransform?: { pipeId: string, position: [number, number, number], rotation: [number, number, number, number] } }) {
       const three = useThree()
       if (!three.scene) return;
@@ -191,6 +222,14 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
           } else this.addConnection(pipe.id, conn.jointId, conn.holeId, "midway", conn.rotation, conn.position)
         })
       })
+      // Apply root transform if provided
+      if (structure.rootTransform) {
+        const rootInstance = this.instances.find(i => i.id === structure.rootTransform!.pipeId)?.obj
+        if (rootInstance) {
+          rootInstance.position.set(...structure.rootTransform.position)
+          rootInstance.quaternion.set(...structure.rootTransform.rotation)
+        }
+      }
     }
   },
   getters: {
