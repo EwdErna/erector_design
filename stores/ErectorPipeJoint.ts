@@ -246,7 +246,6 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       const renderCount = this.renderCount++
       function update(updated: string[], pipe: ErectorPipe, pipeTransform: transform) {
         if (!updated.includes(pipe.id)) {
-          if (renderCount === 0) console.log(pipe)
           // 一つ以上のjointが更新済みなのでそれを探し、pipe自身の座標を更新してupdatedに追加し離脱
           // nextUpdateにまだいるので、次の周回で上のif句に入りpipeに接続された他のjointの座標が更新される
           const start = pipe.connections.start
@@ -263,9 +262,6 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
                 pipeTransform.position.set(...position.toArray())
                 pipeTransform.rotation.set(...rotation.toArray())
                 // 座標を更新したのでもう離脱していい
-                if (renderCount === 0) {
-                  console.log(`updated pipe ${pipe.id} by start connection ${start.id}`)
-                }
               }
             }
           }
@@ -281,9 +277,6 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
                 pipeTransform.position.set(...position.toArray())
                 pipeTransform.rotation.set(...rotation.toArray())
                 // 座標を更新したのでもう離脱していい
-                if (renderCount === 0) {
-                  console.log(`updated pipe ${pipe.id} by end connection ${end.id}`)
-                }
               }
             }
           }
@@ -301,9 +294,6 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
                   pipeTransform.position.set(...position.toArray())
                   pipeTransform.rotation.set(...rotation.toArray())
                   // 座標を更新したのでもう離脱していい
-                  if (renderCount === 0) {
-                    console.log(`updated pipe ${pipe.id} by midway connection ${midway.id}`)
-                  }
                 }
               }
             }
@@ -321,7 +311,6 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
             nextUpdate.splice(nextIndex, 1)
           }
           // jointのみ更新
-          if (renderCount === 0) console.log(pipe)
           if (pipe.connections.start) {
             const start = pipe.connections.start
             const joint = joints.find(joint => joint.id === start.jointId)
@@ -354,7 +343,6 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
                     startJoint.transform.position = transform.position + r * -startHole.offset;
                    */
                   const holeDir = new Euler().setFromQuaternion(hole.dir)
-                  console.log(`${holeDir.x}, ${holeDir.y}, ${holeDir.z}`)
                   const pipeZRot = new Quaternion().setFromEuler(new Euler(0, 0, start.rotation / 180 * Math.PI))
                   const invertedHoleDir = hole.dir.clone().multiply(pipeZRot).invert()
                   const rotation = pipeTransform.rotation.clone().multiply(invertedHoleDir)
@@ -389,7 +377,6 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
               else {
                 updated.push(pipe.connections.end.jointId)
                 if (hole) {
-                  if (renderCount === 0) console.log(pipe.connections.end)
                   const rotation = pipeTransform.rotation.clone()
                     .multiply(new Quaternion().setFromEuler(new Euler(0, Math.PI, 0))
                       .multiply(hole.dir.clone()
@@ -436,7 +423,6 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
                   const position = pipeTransform.position.clone().add(new Vector3(0, 0, 1).applyQuaternion(pipeTransform.rotation).multiplyScalar(pipe.length * conn.position)).add(hole.offset.clone().applyQuaternion(rotation))
                   const target = instances.find(i => i.id === joint.id)?.obj;
                   target?.position.set(...position.toArray())
-                  if (renderCount === 100) console.log(target)
                   target?.rotation.setFromQuaternion(rotation)
                 }
               }
@@ -455,7 +441,6 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
         nextUpdate.push(root.id)
         while (nextUpdate.length > 0) {
           const pipeId = nextUpdate.shift()
-          if (renderCount === 0) console.log(`nextUpdate: ${pipeId}`)
           if (!pipeId) continue
           const pipe = pipes.find(pipe => pipe.id === pipeId)
           if (!pipe) continue
