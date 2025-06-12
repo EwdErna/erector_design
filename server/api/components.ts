@@ -10,7 +10,7 @@
 import { resolve } from 'path';
 import { readdir } from 'fs/promises';
 export default defineEventHandler(async (event) => {
-  const componentsDir = 'assets/components';
+  const componentsDir = 'server/assets/components';
   const categories = await readdir(componentsDir, { withFileTypes: true });
 
   const components = await Promise.all(

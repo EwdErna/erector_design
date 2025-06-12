@@ -3,10 +3,11 @@ import { basename, extname, resolve } from "path";
 
 export default defineEventHandler(async (event): Promise<{ [key: string]: string }> => {
   const { category } = getRouterParams(event);
-  const componentsDir = 'assets/components';
+  const componentsDir = 'server/assets/components';
   // search in assets/components/[category] then return the thumbnails
   try {
     const categoryPath = resolve(componentsDir, category);
+    console.log(categoryPath)
     const files = (await readdir(categoryPath)).filter(file => file.endsWith('.png'));
     // Filter for image files and map to their paths
     const thumbnails: { [key: string]: string } = {};

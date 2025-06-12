@@ -5,11 +5,12 @@ import { readdir, readFile } from 'fs/promises';
 
 export default defineEventHandler(async (event) => {
   const { category, name } = getRouterParams(event)
-  const componentsDir = 'assets/components'
+  const componentsDir = 'server/assets/components'
 
   try {
     const filePath = resolve(componentsDir, `${category}/${name}.gltf`);
     const binPath = resolve(componentsDir, `${category}/${name}.bin`);
+    console.log(filePath)
 
     // Read the glTF file and bin file as blobs
     const [gltfBlob, binBlob] = await Promise.all([
