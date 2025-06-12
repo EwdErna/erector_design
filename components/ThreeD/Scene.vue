@@ -43,7 +43,7 @@ function selectObject(event: MouseEvent) {
 const setupScene = () => {
   if (!container.value) return
 
-  const erector_structure: { pipes: ErectorPipe[], joints: { id: string, name: string }[] } = {
+  const erector_structure: { pipes: ErectorPipe[], joints: { id: string, name: string, category: string }[] } = {
     pipes: [{
       id: "P_0001",
       length: 0.3,
@@ -83,9 +83,10 @@ const setupScene = () => {
     }],
     joints: [{
       id: 'J-4_0001',
-      name: 'J-4'
+      name: 'J-4',
+      category: 'corner'
     }, {
-      id: 'J-12B_0001', name: 'J-12B'
+      id: 'J-12B_0001', name: 'J-12B', category: 'midway'
     }]
   }
 

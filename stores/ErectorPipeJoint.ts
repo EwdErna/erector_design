@@ -6,14 +6,39 @@ import type { ErectorJoint, ErectorJointHole, ErectorPipe, ErectorPipeConnection
 import { genPipe } from '~/utils/Erector/pipe'
 export type transform = { id: string, position: Vector3, rotation: Quaternion }
 import erectorComponentDefinition from '~/data/erector_component.json'
+let loader: GLTFLoader
 export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
   state: () => ({
     pipes: [] as ErectorPipe[],
     joints: [] as ErectorJoint[],
     instances: [] as { id: string, obj?: Object3D }[],
+    models: {} as { [category: string]: { [name: string]: string } },
+    thumbnails: {} as { [category: string]: { [name: string]: string } },
     renderCount: 0,
   }),
   actions: {
+    async getJointModel(category: string, name: string) {
+      if (this.models[category] && this.models[category][name]) {
+        return this.models[category][name]
+      }
+      return await $fetch(`/api/component/${category}/${name}`).then((model) => {
+        if (!model || !model) return;
+        const gltfData = JSON.parse(model.gltf.data)
+        gltfData.buffers[0].uri = `data:application/octet-stream;base64,${model.bin.data}`
+        const gltfDataUri = `data:model/gltf+json;base64,${btoa(JSON.stringify(gltfData))}`
+        return gltfDataUri
+      })
+    },
+    async getJointThumbnails(category: string) {
+      if (this.thumbnails[category]) {
+        return this.thumbnails[category]
+      }
+      return await $fetch(`/api/component/${category}`).then((thumbnails) => {
+        if (!thumbnails || !thumbnails) return;
+        this.thumbnails[category] = thumbnails
+        return thumbnails
+      })
+    },
     addPipe(scene: Scene, diameter: number, length: number, id?: string) {//pipeの存在だけを追加
       if (!id) id = this.newPipeId
       this.pipes.push({
@@ -31,7 +56,6 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
         pipeObject.name = id
         pipeObject.add(pipeMesh)
         this.instances.push({ id, obj: pipeObject })
-        console.log(pipeObject)
         // TODO: get scene and add pipeObject to it
         scene.add(pipeObject)
       }
@@ -52,7 +76,8 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       })
     },
     addJoint(scene: Scene, name: string, category: string, holes: ErectorJointHole[], id?: string) {//jointの存在だけを追加
-      const loader = new GLTFLoader() //TODO: use singleton
+      //const loader = new GLTFLoader() //TODO: use singleton
+      if (!loader) loader = new GLTFLoader()
       if (!id) id = this.newJointId(name)
       this.joints.push({
         id,
@@ -60,17 +85,20 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
         holes
       })
       if (!this.instances.some(i => i.id === id)) {
-        loader.load(`/models/${category}/erector_component-${name}.gltf`, (gltf) => {
-          const model = gltf.scene
-          model.traverse((child) => {
-            if (child instanceof Mesh) {
-              child.material = new MeshPhongMaterial()
-            }
+        this.getJointModel(category, name).then(gltfDataUri => {
+          if (!gltfDataUri) return;
+          loader.load(gltfDataUri, (gltf) => {
+            const model = gltf.scene
+            model.traverse((child) => {
+              if (child instanceof Mesh) {
+                child.material = new MeshPhongMaterial()
+              }
+            })
+            model.name = id
+            this.instances.push({ id, obj: model })
+            // TODO: get scene and add model to it
+            scene.add(model)
           })
-          model.name = id
-          this.instances.push({ id, obj: model })
-          // TODO: get scene and add model to it
-          scene.add(model)
         })
       }
       return id
@@ -173,7 +201,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       this.instances = []
       this.renderCount = 0
     },
-    loadFromStructure(structure: { pipes: ErectorPipe[], joints: { id: string, name: string }[], rootTransform?: { pipeId: string, position: [number, number, number], rotation: [number, number, number, number] } }) {
+    loadFromStructure(structure: { pipes: ErectorPipe[], joints: { id: string, name: string, category: string }[], rootTransform?: { pipeId: string, position: [number, number, number], rotation: [number, number, number, number] } }) {
       const three = useThree()
       if (!three.scene) return;
       const scene = three.scene
@@ -187,7 +215,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
           if (this.joints.findIndex(j => j.id === conn.jointId) === -1) {
             const joint = structure.joints.find(joint => joint.id === conn.jointId)
             if (!joint) { return }// 接続先のjointがない。よろしくない
-            const jointCategoryDefinition = erectorComponentDefinition.pla_joints.categories.find(c => c.types.some(t => t.name === joint.name))
+            const jointCategoryDefinition = erectorComponentDefinition.pla_joints.categories.find(c => c.name === joint.category)
             if (!jointCategoryDefinition) { return }//接続先のjointがない。よろしくない
             const jointDefinition = (jointCategoryDefinition?.types as { name: string, joints?: { to: [number, number, number], start?: [number, number, number], through?: boolean }[] }[]).find(t => t.name === joint.name)
             if (!jointDefinition) { return }//未知のjoint。よろしくない

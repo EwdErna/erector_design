@@ -19,7 +19,7 @@
               <div @click="addJointToScene(t.name, selected.category)">
                 <h4>{{ t.name }}</h4>
                 <div class="preview">
-                  <img :src="`./models/${selected.category}/erector_component-${t.name}.png`" :alt="t.name">
+                  <img :src="thumbnails[t.name]" :alt="t.name">
                 </div>
               </div>
             </div>
@@ -35,6 +35,7 @@ import { Quaternion, Scene, Vector3 } from 'three';
 import type { PropType } from 'vue';
 import type { ErectorJointComponent } from '~/types/erector_component';
 
+const erector = useErectorPipeJoint()
 const components = defineProps({
   pla_joints: {
     type: Object as PropType<{ categories: { name: string, types: ErectorJointComponent[] }[] }>,
@@ -52,6 +53,11 @@ const selected = useState<{
 }))
 const selectedTypes = computed(() => {
   return components.pla_joints.categories.find(category => category.name === selected.value.category)?.types || []
+})
+const thumbnails = ref<{ [key: string]: string }>({})
+watch(() => selected.value.category, () => {
+  thumbnails.value = {}
+  erector.getJointThumbnails(selected.value.category).then(v => { thumbnails.value = v || {} })
 })
 function addJointToScene(name: string, category: string) {
   const scene: Scene | undefined = useThree().scene
