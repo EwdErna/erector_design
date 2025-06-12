@@ -138,7 +138,6 @@ const animate = (scene: Scene) => {
     if (erector.pipes.length === 0) {
       //console.log("No pipes in erector")
     } else {
-      console.log("rootPipeId not found in erector pipes, resetting to first instance")
       rootPipeId = erector.instances[0].id
       rootPipeObject.value = erector.instances.find(i => i.id === rootPipeId)?.obj
     }

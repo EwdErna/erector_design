@@ -66,7 +66,6 @@ function addJointToScene(name: string, category: string) {
   if (!joint?.joints) { return }
   // Add the joint to the scene
   // This is a placeholder for the actual implementation
-  console.log(`Adding joint ${name} of category ${category} to the scene`)
   const erector = useErectorPipeJoint()
   const added_id = erector.addJoint(scene, name, category, joint.joints.map(j => {
     return {
@@ -75,7 +74,6 @@ function addJointToScene(name: string, category: string) {
       offset: new Vector3().fromArray(j.start ?? [0, 0, 0])
     }
   }))
-  console.log(`added ${added_id}`)
 }
 </script>
 

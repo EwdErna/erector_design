@@ -125,7 +125,6 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
           }
           break
         case 'midway':
-          console.log(position)
           if (id && pipe.connections.midway.some(conn => conn.id === id)) {
             //既に接続されてるので無視
             return
