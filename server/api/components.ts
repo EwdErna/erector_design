@@ -7,10 +7,11 @@
 //     │   └── component2.gltf
 //     └── category2
 
-import { resolve } from 'path';
+import { join, resolve } from 'path';
 import { readdir } from 'fs/promises';
 export default defineEventHandler(async (event) => {
-  const componentsDir = 'server/assets/components';
+  const componentsDir = join(process.cwd(), 'server/assets/components');
+  console.log(componentsDir);
   const categories = await readdir(componentsDir, { withFileTypes: true });
 
   const components = await Promise.all(
