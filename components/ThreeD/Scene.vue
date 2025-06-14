@@ -9,6 +9,7 @@ import { AmbientLight, AxesHelper, DirectionalLight, GridHelper, PerspectiveCame
 import { GLTFLoader } from 'three/examples/jsm/Addons.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { ErectorPipe, ErectorPipeConnection } from '~/types/erector_component';
+import { JointControl } from '~/utils/Erector/JointControls';
 
 const container = useTemplateRef("container")
 const objectSelection = useObjectSelection()
@@ -16,6 +17,7 @@ const three = useThree()
 let renderer: WebGLRenderer
 let camera: PerspectiveCamera
 let controls: OrbitControls
+let jointControls: JointControl
 let rootPipeId: string
 const erector = useErectorPipeJoint()
 const rootPipeObject: Ref<Object3D | undefined> = ref()
@@ -36,6 +38,11 @@ function selectObject(event: MouseEvent) {
         break
     }
     console.log(rootObject)
+    const jointObject = erector.joints.find(j => j.id === rootObject.name)
+    const pipeObject = erector.pipes.find(p => p.id === rootObject.name)
+    if (jointObject) {
+      jointControls.setSelectedJoint(jointObject, rootObject)
+    }
     objectSelection.select(rootObject.name)
   }
 }
@@ -112,6 +119,13 @@ const setupScene = () => {
   controls.maxDistance = 100
   controls.maxPolarAngle = Math.PI
 
+  jointControls = new JointControl(camera, renderer.domElement)
+  jointControls.addEventListener('dragging-changed', e => {
+    controls.enabled = !e.value
+  })
+  scene.add(jointControls.gizmos)
+  scene.add(jointControls.debugLines)
+
   const gridHelper = new GridHelper(10, 10)
   scene.add(gridHelper)
 
@@ -149,6 +163,7 @@ const animate = (scene: Scene) => {
 
   // OrbitControlsの更新
   controls.update()
+  jointControls.updateGizmosTransform()
 
   requestAnimationFrame(() => animate(scene))
   renderer.render(scene, camera)

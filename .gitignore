@@ -26,3 +26,6 @@ logs
 # data
 data/*
 !data/erector_component.json
+log.json
+test.png
+test.py
