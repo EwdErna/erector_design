@@ -1,4 +1,4 @@
-import { Camera, Euler, EventDispatcher, Group, Material, Mesh, MeshBasicMaterial, Object3D, Plane, Quaternion, Raycaster, TorusGeometry, Vector2, Vector3, LineBasicMaterial, BufferGeometry, Line } from "three";
+import { Camera, Euler, EventDispatcher, Group, Material, Mesh, MeshBasicMaterial, Object3D, Plane, Quaternion, Raycaster, TorusGeometry, Vector2, Vector3, LineBasicMaterial, BufferGeometry, Line, SphereGeometry } from "three";
 import type { ErectorComponent, ErectorJoint, ErectorJointComponent, ErectorJointType, ErectorPipeConnection } from "~/types/erector_component";
 import components from "~/data/erector_component.json";
 import { degToRad, radToDeg } from "three/src/math/MathUtils.js";
@@ -20,7 +20,12 @@ export class JointControl extends EventDispatcher<{
   lastAngle: number;
   raycaster: Raycaster;
   mouse: Vector2;
-  debugLines: Group;
+  debugObjects: Group;
+  intersection: Vector3 | null;
+  intersectionStart: Vector3 | null;
+  intersectionSphere: SphereGeometry | null;
+  intersectionLine: Line | null;
+  intersectionStartLine: Line | null;
   startAngleLine: Line | null;
   lastAngleLine: Line | null;
   normalLine: Line | null;
@@ -33,13 +38,18 @@ export class JointControl extends EventDispatcher<{
     this.enabled = true;
 
     this.gizmos = new Group();
-    this.debugLines = new Group();
+    this.debugObjects = new Group();
     this.selectedJoint = null;
     this.activeGizmo = null;
     this.isDragging = false;
     this.startRotation = 0;
     this.startAngle = 0;
     this.lastAngle = 0;
+    this.intersection = null;
+    this.intersectionStart = null;
+    this.intersectionSphere = null;
+    this.intersectionLine = null;
+    this.intersectionStartLine = null;
     this.startAngleLine = null;
     this.lastAngleLine = null;
     this.normalLine = null;
@@ -61,7 +71,7 @@ export class JointControl extends EventDispatcher<{
 
   clear() {
     this.gizmos.clear();
-    this.debugLines.clear();
+    this.debugObjects.clear();
     this.selectedJoint = null;
     this.activeGizmo = null;
     this.startAngleLine = null;
@@ -194,7 +204,7 @@ export class JointControl extends EventDispatcher<{
       const worldNormal = normal.clone().applyQuaternion(gizmosWorldRotation).normalize();
 
       // デバッグ線を初期化
-      this.updateDebugLines(gizmoWorldPos, worldNormal, this.startAngle, this.startAngle);
+      this.updateDebugLines(gizmoWorldPos, worldNormal, this.intersection ?? undefined, this.startAngle, this.startAngle);
 
       // ハイライト
       const material = gizmo.material;
@@ -226,8 +236,6 @@ export class JointControl extends EventDispatcher<{
       this.gizmos.getWorldQuaternion(gizmosWorldRotation);
       const normal = this.activeGizmo.userData.direction.clone();
       const worldNormal = normal.clone().applyQuaternion(gizmosWorldRotation).normalize();
-      console.log(`worldRot: ${new Euler().setFromQuaternion(gizmosWorldRotation).toArray()}`)
-      console.log(`worldNorm: ${worldNormal.toArray()}`)
 
       // 現在のマウス位置から角度を計算
       const currentAngle = this.getAngleOnGizmoPlane(this.mouse);
@@ -249,7 +257,7 @@ export class JointControl extends EventDispatcher<{
       });
 
       // デバッグ用のラインを更新
-      this.updateDebugLines(gizmoWorldPos, worldNormal, this.startAngle, currentAngle);
+      this.updateDebugLines(gizmoWorldPos, worldNormal, this.intersection ?? undefined, this.startAngle, currentAngle);
 
     } else {
       // ホバー処理
@@ -310,7 +318,13 @@ export class JointControl extends EventDispatcher<{
       this.dispatchEvent({ type: 'dragging-changed', value: false })
 
       // ドラッグ終了時にデバッグ線をクリア
-      this.debugLines.clear();
+      this.debugObjects.clear();
+      this.intersection = null;
+      this.intersectionStart = null;
+      this.intersectionSphere = null;
+      this.intersectionLine = null;
+      this.intersectionStartLine = null;
+      this.normalLine = null;
       this.startAngleLine = null;
       this.lastAngleLine = null;
 
@@ -344,7 +358,7 @@ export class JointControl extends EventDispatcher<{
 
     // 平面との交点を計算
     const plane = new Plane();
-    plane.setFromNormalAndCoplanarPoint(normal, gizmoWorldPos);
+    plane.setFromNormalAndCoplanarPoint(worldNormal, gizmoWorldPos);
 
     const intersection = new Vector3();
     this.raycaster.ray.intersectPlane(plane, intersection);
@@ -354,9 +368,15 @@ export class JointControl extends EventDispatcher<{
       return this.lastAngle || 0;
     }
 
+    this.intersection = intersection.clone();
+    if (!this.intersectionStart) {
+      this.intersectionStart = intersection.clone();
+      console.log(`intersectionStart: ${this.intersectionStart.toArray()}`)
+    }
+
     // ギズモ中心からの相対ベクトルを計算
     const localPoint = intersection.clone().sub(gizmoWorldPos);
-
+    const localPointStart = this.intersectionStart.clone().sub(gizmoWorldPos);
     // ギズモの向きに合わせて基準となる軸を決定
     // 回転軸と直交するベクトルを求める
     const worldUp = new Vector3(0, 1, 0); // 仮の上方向
@@ -398,14 +418,17 @@ export class JointControl extends EventDispatcher<{
   }
 
   // デバッグ用の角度表示線を作成・更新するメソッド
-  updateDebugLines(gizmoWorldPos: Vector3, gizmoWorldNormal: Vector3, startAngle?: number, lastAngle?: number) {
+  updateDebugLines(gizmoWorldPos: Vector3, gizmoWorldNormal: Vector3, intersects?: Vector3, startAngle?: number, lastAngle?: number) {
     // 既存のデバッグ線をクリア
-    this.debugLines.clear();
+    this.debugObjects.clear();
+    this.intersectionSphere = null;
+    this.intersectionLine = null;
+    this.intersectionStartLine = null;
+    this.normalLine = null;
     this.startAngleLine = null;
     this.lastAngleLine = null;
 
     if (!this.activeGizmo) return;
-    console.log(`${gizmoWorldNormal.toArray()}`)
 
     // 線の長さを設定
     const lineLength = 0.15;
@@ -417,11 +440,10 @@ export class JointControl extends EventDispatcher<{
     if (referenceAxis.length() < 0.1) {
       referenceAxis = new Vector3().crossVectors(gizmoWorldNormal, new Vector3(1, 0, 0));
     }
-    console.log(`${referenceAxis.toArray()}`)
 
     referenceAxis.normalize();
     const secondAxis = new Vector3().crossVectors(gizmoWorldNormal, referenceAxis).normalize();
-    const normalDir = gizmoWorldNormal.clone().normalize().multiplyScalar(lineLength*10);
+    const normalDir = gizmoWorldNormal.clone().normalize().multiplyScalar(lineLength * 10);
     const normalGeometry = new BufferGeometry().setFromPoints([
       new Vector3(0, 0, 0),
       normalDir
@@ -429,7 +451,24 @@ export class JointControl extends EventDispatcher<{
     const normalMaterial = new LineBasicMaterial({ color: 0x0000ff, linewidth: 2 });
     this.normalLine = new Line(normalGeometry, normalMaterial);
     this.normalLine.position.copy(gizmoWorldPos);
-    this.debugLines.add(this.normalLine);
+    this.debugObjects.add(this.normalLine);
+
+    if (intersects !== undefined) {
+      const intersectionGeometry = new SphereGeometry(0.01);
+      const intersectionMaterial = new MeshBasicMaterial({ color: 0xffff00 });
+      const intersectionMesh = new Mesh(intersectionGeometry, intersectionMaterial);
+      intersectionMesh.position.copy(intersects);
+      this.debugObjects.add(intersectionMesh);
+    }
+    if (this.intersectionStart !== null) {
+      const intersectionStartGeometry = new BufferGeometry().setFromPoints([
+        gizmoWorldPos.clone(),
+        this.intersectionStart.clone().normalize().multiplyScalar(lineLength)
+      ]);
+      const intersectionStartMaterial = new LineBasicMaterial({ color: 0xff00ff, linewidth: 2 });
+      this.intersectionStartLine = new Line(intersectionStartGeometry, intersectionStartMaterial);
+      this.debugObjects.add(this.intersectionStartLine);
+    }
 
     // startAngle用の線を作成
     if (startAngle !== undefined) {
@@ -447,7 +486,7 @@ export class JointControl extends EventDispatcher<{
       const startMaterial = new LineBasicMaterial({ color: 0xff0000, linewidth: 2 });
       this.startAngleLine = new Line(startGeometry, startMaterial);
       this.startAngleLine.position.copy(gizmoWorldPos);
-      this.debugLines.add(this.startAngleLine);
+      this.debugObjects.add(this.startAngleLine);
     }
 
     // lastAngle用の線を作成
@@ -466,7 +505,7 @@ export class JointControl extends EventDispatcher<{
       const lastMaterial = new LineBasicMaterial({ color: 0x00ff00, linewidth: 2 });
       this.lastAngleLine = new Line(lastGeometry, lastMaterial);
       this.lastAngleLine.position.copy(gizmoWorldPos);
-      this.debugLines.add(this.lastAngleLine);
+      this.debugObjects.add(this.lastAngleLine);
     }
   }
 }

@@ -124,7 +124,7 @@ const setupScene = () => {
     controls.enabled = !e.value
   })
   scene.add(jointControls.gizmos)
-  scene.add(jointControls.debugLines)
+  scene.add(jointControls.debugObjects)
 
   const gridHelper = new GridHelper(10, 10)
   scene.add(gridHelper)
