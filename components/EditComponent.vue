@@ -7,29 +7,21 @@
       <hr>
       <div v-if="selectedObject?.obj">
         <div>
-          position: <input type="number" :value="currentPosition[0]"
-            @change="updatePosition(0, Number.parseFloat(($event.target as HTMLInputElement).value))">,
-          <input type="number" :value="currentPosition[1]"
-            @change="updatePosition(1, Number.parseFloat(($event.target as HTMLInputElement).value))">,
-          <input type="number" :value="currentPosition[2]"
-            @change="updatePosition(2, Number.parseFloat(($event.target as HTMLInputElement).value))">
+          position: <input type="number" v-model="inputPosition[0]" @change="updatePosition(0, inputPosition[0])">,
+          <input type="number" v-model="inputPosition[1]" @change="updatePosition(1, inputPosition[1])">,
+          <input type="number" v-model="inputPosition[2]" @change="updatePosition(2, inputPosition[2])">
         </div>
         <div>
-          rotation: <input type="number" :value="currentRotation[0]"
-            @change="updateRotation(0, Number.parseFloat(($event.target as HTMLInputElement).value))">,
-          <input type="number" :value="currentRotation[1]"
-            @change="updateRotation(1, Number.parseFloat(($event.target as HTMLInputElement).value))">,
-          <input type="number" :value="currentRotation[2]"
-            @change="updateRotation(2, Number.parseFloat(($event.target as HTMLInputElement).value))">
+          rotation: <input type="number" v-model="inputRotation[0]" @change="updateRotation(0, inputRotation[0])">,
+          <input type="number" v-model="inputRotation[1]" @change="updateRotation(1, inputRotation[1])">,
+          <input type="number" v-model="inputRotation[2]" @change="updateRotation(2, inputRotation[2])">
         </div>
       </div>
       <div>{{ selectedPipe.length * 1000 }}mm
-        <input type="range" min="0" max="4000" step="100" :value="selectedPipe.length * 1000"
-          @change="lenChange($event, selectedPipe)" />
-        <input type="number" min="0" max="4000" :value="selectedPipe.length * 1000"
-          @change="lenChange($event, selectedPipe)" />
+        <input type="range" min="0" max="4000" step="100" v-model="inputLength" @change="updateLength" />
+        <input type="number" min="0" max="4000" v-model="inputLength" @change="updateLength" />
       </div>
-      <div><select :value="selectedPipe.diameter">
+      <div><select v-model="inputDiameter" @change="updateDiameter">
           <option v-for="d in [28, 32, 42]" :value="d / 1000">Φ{{ d }}</option>
         </select>
       </div>
@@ -51,9 +43,8 @@
               <option v-for="_, i in connStartJoint?.holes" :value="i">{{ i }}</option>
             </select>
           </div>
-          <div>Rotation: <input type="number" :value="connStart.rotation"
-              @input="connStart.rotation = Number.parseFloat(($event.target as HTMLInputElement).value)"
-              @change="updateConnection($event, selectedPipe.id, connStart.id, 'rotation')">
+          <div>Rotation: <input type="number" v-model="inputConnStartRotation"
+              @change="updateConnectionRotation('start', inputConnStartRotation)">
             <span v-if="connStart" style="margin-left: 10px; color: #666;">
               rel: {{ erector.getPipeJointRelationship(selectedPipe.id, connStart.jointId, connStart.holeId, 'start') ||
                 'none' }}
@@ -78,9 +69,8 @@
               <option v-for="_, i in connEndJoint?.holes" :value="i">{{ i }}</option>
             </select>
           </div>
-          <div>Rotation: <input type="number" :value="connEnd.rotation"
-              @input="connEnd.rotation = Number.parseFloat(($event.target as HTMLInputElement).value)"
-              @change="updateConnection($event, selectedPipe.id, connEnd.id, 'rotation')">
+          <div>Rotation: <input type="number" v-model="inputConnEndRotation"
+              @change="updateConnectionRotation('end', inputConnEndRotation)">
             <span v-if="connEnd" style="margin-left: 10px; color: #666;">
               rel: {{ erector.getPipeJointRelationship(selectedPipe.id, connEnd.jointId, connEnd.holeId, 'end') ||
                 'none' }}
@@ -104,18 +94,16 @@
             </select>
           </div>
           <div>Rotation:
-            <input type="number" :value="conn.rotation"
-              @input="conn.rotation = Number.parseFloat(($event.target as HTMLInputElement).value)"
-              @change="updateConnection($event, selectedPipe.id, conn.id, 'rotation')">
+            <input type="number" v-model="inputConnMidwayRotations[i]"
+              @change="updateConnectionRotation('midway', inputConnMidwayRotations[i], i)">
             <span style="margin-left: 10px; color: #666;">
               rel: {{ erector.getPipeJointRelationship(selectedPipe.id, conn.jointId, conn.holeId, 'midway') || 'none'
               }}
             </span>
           </div>
-          <div>Position: <input type="number" :value="conn.position" min="0" max="1" step="0.01"
-              @input="conn.position = Number.parseFloat(($event.target as HTMLInputElement).value)"
-              @change="updateConnection($event, selectedPipe.id, conn.id, 'position')"> : {{
-                conn.position * selectedPipe.length * 1000 }}mm</div>
+          <div>Position: <input type="number" v-model="inputConnMidwayPositions[i]" min="0" max="1" step="0.01"
+              @change="updateConnectionPosition(i, inputConnMidwayPositions[i])"> : {{
+                (inputConnMidwayPositions[i] || 0) * selectedPipe.length * 1000 }}mm</div>
         </div>
       </div>
       <div>
@@ -136,20 +124,14 @@
       <hr>
       <div v-if="selectedObject?.obj">
         <div>
-          position: <input type="number" :value="currentPosition[0]"
-            @change="updatePosition(0, Number.parseFloat(($event.target as HTMLInputElement).value))">,
-          <input type="number" :value="currentPosition[1]"
-            @change="updatePosition(1, Number.parseFloat(($event.target as HTMLInputElement).value))">,
-          <input type="number" :value="currentPosition[2]"
-            @change="updatePosition(2, Number.parseFloat(($event.target as HTMLInputElement).value))">
+          position: <input type="number" v-model="inputPosition[0]" @change="updatePosition(0, inputPosition[0])">,
+          <input type="number" v-model="inputPosition[1]" @change="updatePosition(1, inputPosition[1])">,
+          <input type="number" v-model="inputPosition[2]" @change="updatePosition(2, inputPosition[2])">
         </div>
         <div>
-          rotation: <input type="number" :value="currentRotation[0]"
-            @change="updateRotation(0, Number.parseFloat(($event.target as HTMLInputElement).value))">,
-          <input type="number" :value="currentRotation[1]"
-            @change="updateRotation(1, Number.parseFloat(($event.target as HTMLInputElement).value))">,
-          <input type="number" :value="currentRotation[2]"
-            @change="updateRotation(2, Number.parseFloat(($event.target as HTMLInputElement).value))">
+          rotation: <input type="number" v-model="inputRotation[0]" @change="updateRotation(0, inputRotation[0])">,
+          <input type="number" v-model="inputRotation[1]" @change="updateRotation(1, inputRotation[1])">,
+          <input type="number" v-model="inputRotation[2]" @change="updateRotation(2, inputRotation[2])">
         </div>
       </div>
       <div>Joint ID: {{ selectedJoint.id }}</div>
@@ -169,6 +151,18 @@ const selectedPipe = computed(() => erector.pipes.find(p => p.id === objectSelec
 const selectedJoint = computed(() => erector.joints.find(j => j.id === objectSelection.object))
 const selectedObject = computed(() => erector.instances.find(i => i.id === objectSelection.object))
 
+// 入力用の一時的な値を管理するref
+const inputPosition = ref([0, 0, 0])
+const inputRotation = ref([0, 0, 0])
+const inputLength = ref(0)
+const inputDiameter = ref(0)
+
+// connection用の一時的な値
+const inputConnStartRotation = ref(0)
+const inputConnEndRotation = ref(0)
+const inputConnMidwayRotations = ref<number[]>([])
+const inputConnMidwayPositions = ref<number[]>([])
+
 // 現在の位置と回転を取得するcomputed値
 const currentPosition = computed(() => {
   if (!objectSelection.object) return [0, 0, 0]
@@ -179,6 +173,20 @@ const currentRotation = computed(() => {
   if (!objectSelection.object) return [0, 0, 0]
   return erector.getObjectRotation(objectSelection.object) || [0, 0, 0]
 })
+
+// オブジェクトが変更された時に入力値を同期
+watch([objectSelection, currentPosition, currentRotation], () => {
+  inputPosition.value = [...currentPosition.value]
+  inputRotation.value = [...currentRotation.value]
+}, { immediate: true })
+
+// pipeが変更された時にlengthとdiameterを同期
+watch(selectedPipe, (pipe) => {
+  if (pipe) {
+    inputLength.value = pipe.length * 1000
+    inputDiameter.value = pipe.diameter
+  }
+}, { immediate: true })
 
 // 位置更新関数
 function updatePosition(axis: number, value: number) {
@@ -192,6 +200,9 @@ function updatePosition(axis: number, value: number) {
 
   // 依存関係を再計算
   erector.recalculateObjectDependencies(objectSelection.object)
+
+  // 入力値をストアの値で更新（他の操作による変更を反映）
+  inputPosition.value = [...currentPosition.value]
 }
 
 // 回転更新関数
@@ -206,6 +217,9 @@ function updateRotation(axis: number, value: number) {
 
   // 依存関係を再計算
   erector.recalculateObjectDependencies(objectSelection.object)
+
+  // 入力値をストアの値で更新（他の操作による変更を反映）
+  inputRotation.value = [...currentRotation.value]
 }
 
 function lenChange(event: Event, pipe: ErectorPipe) {
@@ -213,6 +227,56 @@ function lenChange(event: Event, pipe: ErectorPipe) {
   const value = parseInt(target.value)
   if (isNaN(value)) { return }
   erector.updatePipe(pipe.id, 'length', value / 1000)
+}
+
+function updateLength() {
+  if (!selectedPipe.value) return
+  const value = Number(inputLength.value)
+  if (isNaN(value)) return
+
+  erector.updatePipe(selectedPipe.value.id, 'length', value / 1000)
+  // 入力値をストアの値で更新
+  inputLength.value = selectedPipe.value.length * 1000
+}
+
+function updateDiameter() {
+  if (!selectedPipe.value) return
+  const value = Number(inputDiameter.value)
+  if (isNaN(value)) return
+
+  erector.updatePipe(selectedPipe.value.id, 'diameter', value)
+  // 入力値をストアの値で更新
+  inputDiameter.value = selectedPipe.value.diameter
+}
+
+function updateConnectionRotation(connectionType: 'start' | 'end' | 'midway', value: number, index?: number) {
+  if (!selectedPipe.value) return
+  if (isNaN(value)) return
+
+  if (connectionType === 'start' && connStart.value) {
+    erector.updateConnection(connStart.value.id, { rotation: value })
+    inputConnStartRotation.value = connStart.value.rotation || 0
+  } else if (connectionType === 'end' && connEnd.value) {
+    erector.updateConnection(connEnd.value.id, { rotation: value })
+    inputConnEndRotation.value = connEnd.value.rotation || 0
+  } else if (connectionType === 'midway' && connMidway.value && typeof index === 'number') {
+    const conn = connMidway.value[index]
+    if (conn) {
+      erector.updateConnection(conn.id, { rotation: value })
+      inputConnMidwayRotations.value[index] = conn.rotation || 0
+    }
+  }
+}
+
+function updateConnectionPosition(index: number, value: number) {
+  if (!selectedPipe.value || !connMidway.value) return
+  if (isNaN(value)) return
+
+  const conn = connMidway.value[index]
+  if (conn) {
+    erector.updateConnection(conn.id, { position: value })
+    inputConnMidwayPositions.value[index] = conn.position || 0
+  }
 }
 const connStart = computed(() => selectedPipe.value?.connections.start)
 const connStartJoint = computed(() => erector.joints.find(j => j.id === connStart.value?.jointId))
@@ -229,6 +293,23 @@ const pipeRelationships = computed(() => {
   if (!selectedPipe.value) return []
   return erector.pipeJointRelationships.filter(rel => rel.pipeId === selectedPipe.value!.id)
 })
+
+// connectionの値を同期
+watch([connStart, connEnd, connMidway], () => {
+  if (connStart.value) {
+    inputConnStartRotation.value = connStart.value.rotation || 0
+  }
+  if (connEnd.value) {
+    inputConnEndRotation.value = connEnd.value.rotation || 0
+  }
+  if (connMidway.value) {
+    inputConnMidwayRotations.value = connMidway.value.map(conn => conn.rotation || 0)
+    inputConnMidwayPositions.value = connMidway.value.map(conn => conn.position || 0)
+  } else {
+    inputConnMidwayRotations.value = []
+    inputConnMidwayPositions.value = []
+  }
+}, { immediate: true, deep: true })
 
 function removeObject(obj: ErectorPipe | ErectorJoint) {
   // erector.pipesもしくはerector.jointsから削除
