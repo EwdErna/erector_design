@@ -161,7 +161,8 @@ const animate = (scene: Scene) => {
     }
   }
   if (rootPipeObject.value) {
-    erector.worldPosition({
+    const calculatePosition = erector.calculateWorldPosition()
+    calculatePosition({
       id: rootPipeId, position: rootPipeObject.value?.position.clone() ?? new Vector3(), rotation: new Quaternion().setFromEuler(rootPipeObject.value?.rotation ?? new Euler(0, 0, 0))
     })
   }

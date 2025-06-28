@@ -3,6 +3,15 @@ import { definitions } from "@/utils/Erector/erectorComponentDefinition";
 import type { ErectorJoint, ErectorPipeConnection } from "~/types/erector_component";
 import { radiansToDegrees } from "~/utils/angleUtils";
 
+/**
+ * Type guard to check if an object is a Mesh with MeshBasicMaterial
+ */
+function isMeshWithBasicMaterial(obj: any): obj is Mesh<BufferGeometry, MeshBasicMaterial> {
+  return obj instanceof Mesh &&
+    obj.material instanceof MeshBasicMaterial &&
+    !Array.isArray(obj.material);
+}
+
 export class JointControls extends Controls<{ change: { value: boolean }, 'dragging-changed': { value: boolean } }> {
   gizmoGroup: Group = new Group()
   gizmos: Mesh[] = []
@@ -10,7 +19,7 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
   camera: Camera
   override domElement: HTMLElement
   isDragging: boolean = false
-  dragging: Mesh | null = null
+  dragging: Mesh<BufferGeometry, MeshBasicMaterial> | null = null
   draggingPlane: Plane | null = null;
   debugObjects: Group = new Group()
   normalLine: Line | null = null;
@@ -131,8 +140,15 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
         this.domElement.style.cursor = 'grabbing';
         this.dispatchEvent({ type: 'dragging-changed', value: true });
       }
-      this.dragging = intersects[0].object as Mesh;
-      (this.dragging.material as MeshBasicMaterial).opacity = 0.8;
+      const intersectedObject = intersects[0].object;
+      // Type guard to ensure the object is a Mesh with MeshBasicMaterial
+      if (isMeshWithBasicMaterial(intersectedObject)) {
+        this.dragging = intersectedObject;
+        intersectedObject.material.opacity = 0.8;
+      } else {
+        console.warn('Intersected object is not a Mesh with MeshBasicMaterial');
+        return;
+      }
 
       const clickSphere = new Mesh(new SphereGeometry(0.01, 16, 16))
       clickSphere.name = `${this.dragging.name}-click-sphere`
@@ -242,7 +258,10 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
     if (this.isDragging) {
       if (this.dragging) {
         this.dragging.userData.rotation = this.currentAngle;
-        (this.dragging.material as MeshBasicMaterial).opacity = 0.5;
+        // Type guard to safely update material opacity
+        if (isMeshWithBasicMaterial(this.dragging)) {
+          this.dragging.material.opacity = 0.5;
+        }
         this.dragging = null;
       }
 

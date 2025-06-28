@@ -423,12 +423,12 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
 
       console.log(`Joint ${joint.id} affects ${connectedPipes.length} pipes`)
     },
-  },
-  getters: {
-    invalidJoints() {
-      // jointの座標や向きを検証し、つなげることのできない場所があれば配列として返却
-      return []
-    }, worldPosition() {
+
+    /**
+     * Calculate world positions for all pipes and joints based on their relationships
+     * This was moved from getters to actions to enable proper type safety
+     */
+    calculateWorldPosition() {
       const updated: string[] = []
       const nextUpdate: string[] = []
       const pipes = this.pipes
@@ -436,10 +436,10 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       const instances = this.instances
       const renderCount = this.renderCount++
 
-      // Get reference to the store instance
-      const store = this as any
+      // Use proper method reference with type safety
+      const updatePipeJointRelationshipMethod = this.updatePipeJointRelationship
 
-      function update(updated: string[], pipe: ErectorPipe, pipeTransform: transform, updatePipeJointRelationship: (pipeId: string, jointId: string, holeId: number, connectionType: 'start' | 'end' | 'midway', relationshipType: 'j2p' | 'p2j') => void) {
+      function update(updated: string[], pipe: ErectorPipe, pipeTransform: transform, updatePipeJointRelationship: typeof updatePipeJointRelationshipMethod) {
         if (!updated.includes(pipe.id)) {
           // 一つ以上のjointが更新済みなのでそれを探し、pipe自身の座標を更新してupdatedに追加し離脱
           // nextUpdateにまだいるので、次の周回で上のif句に入りpipeに接続された他のjointの座標が更新される
@@ -676,9 +676,15 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
             position: pipeObject.position,
             rotation: pipeObject.quaternion
           }
-          update(updated, pipe, updatedTransform, store.updatePipeJointRelationship.bind(store))
+          update(updated, pipe, updatedTransform, updatePipeJointRelationshipMethod)
         }
       }
+    }
+  },
+  getters: {
+    invalidJoints() {
+      // jointの座標や向きを検証し、つなげることのできない場所があれば配列として返却
+      return []
     },
     newPipeId(): string {
       const existing_id = this.pipes.map(v => Number.parseInt(v.id.split('_')[1], 10));
