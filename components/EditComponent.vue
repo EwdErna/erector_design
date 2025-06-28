@@ -53,6 +53,10 @@
           </div>
           <div>Rotation: <input type="number" :value="connStart.rotation"
               @change="updateConnection($event, selectedPipe.id, connStart.id, 'rotation')">
+            <span v-if="connStart" style="margin-left: 10px; color: #666;">
+              rel: {{ erector.getPipeJointRelationship(selectedPipe.id, connStart.jointId, connStart.holeId, 'start') ||
+              'none' }}
+            </span>
           </div>
         </div>
         <div>
@@ -75,6 +79,10 @@
           </div>
           <div>Rotation: <input type="number" :value="connEnd.rotation"
               @change="updateConnection($event, selectedPipe.id, connEnd.id, 'rotation')">
+            <span v-if="connEnd" style="margin-left: 10px; color: #666;">
+              rel: {{ erector.getPipeJointRelationship(selectedPipe.id, connEnd.jointId, connEnd.holeId, 'end') ||
+              'none' }}
+            </span>
           </div>
         </div>
         <div>
@@ -96,9 +104,25 @@
           <div>Rotation:
             <input type="number" :value="conn.rotation"
               @change="updateConnection($event, selectedPipe.id, conn.id, 'rotation')">
+            <span style="margin-left: 10px; color: #666;">
+              rel: {{ erector.getPipeJointRelationship(selectedPipe.id, conn.jointId, conn.holeId, 'midway') || 'none'
+              }}
+            </span>
           </div>
           <div>Position: <input type="number" v-model="conn.position" min="0" max="1" step="0.01"> : {{
             conn.position * selectedPipe.length * 1000 }}mm</div>
+        </div>
+      </div>
+      <div>
+        <h4>Pipe-Joint Relationships</h4>
+        <div v-if="selectedPipe">
+          <div v-for="rel in pipeRelationships" :key="`${rel.jointId}-${rel.holeId}-${rel.connectionType}`"
+            style="font-size: 0.9em; color: #666; margin: 2px 0;">
+            {{ rel.connectionType }}: {{ rel.jointId }} hole{{ rel.holeId }} → {{ rel.relationshipType }}
+          </div>
+          <div v-if="pipeRelationships.length === 0" style="color: #999; font-style: italic;">
+            No relationships recorded yet
+          </div>
         </div>
       </div>
     </div>
@@ -146,6 +170,11 @@ const connMidJoint = computed(() => (i: number) => {
   const conn = selectedPipe.value?.connections.midway[i]
   if (!conn) return undefined
   return erector.joints.find(j => j.id === conn.jointId)
+})
+
+const pipeRelationships = computed(() => {
+  if (!selectedPipe.value) return []
+  return erector.pipeJointRelationships.filter(rel => rel.pipeId === selectedPipe.value!.id)
 })
 
 function removeObject(obj: ErectorPipe | ErectorJoint) {

@@ -193,11 +193,36 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
       }
     }
     if (targetConnection) {
+      // Check the pipe-joint relationship to determine rotation direction
+      let connectionType: 'start' | 'end' | 'midway' = 'start'
+      if (targetPipe?.connections.start?.id === targetConnection.id) {
+        connectionType = 'start'
+      } else if (targetPipe?.connections.end?.id === targetConnection.id) {
+        connectionType = 'end'
+      } else {
+        connectionType = 'midway'
+      }
+
+      const relationshipType = connections.getPipeJointRelationship(
+        targetPipe!.id,
+        this.target!.joint.id,
+        dragging.userData.index,
+        connectionType
+      )
+
+      // Reverse rotation direction for p2j relationships
+      const rotationMultiplier = relationshipType === 'p2j' ? -1 : 1
+      const adjustedAngle = angle * rotationMultiplier
+
       console.log(`startAngle: ${this.dragStartAngle} deg`);
-      console.log(`rotation: ${this.dragStartAngle + angle * 180 / Math.PI} deg`);
-      connections.updateConnection(targetConnection.id, { rotation: this.dragStartAngle + angle * 180 / Math.PI });
+      console.log(`relationship: ${relationshipType}, multiplier: ${rotationMultiplier}`);
+      console.log(`rotation: ${this.dragStartAngle + adjustedAngle * 180 / Math.PI} deg`);
+      connections.updateConnection(targetConnection.id, { rotation: this.dragStartAngle + adjustedAngle * 180 / Math.PI });
+      this.currentAngle = this.dragStartAngle + adjustedAngle * 180 / Math.PI;
+    } else {
+      // Fallback if no connection found
+      this.currentAngle = this.dragStartAngle + angle * 180 / Math.PI;
     }
-    this.currentAngle = this.dragStartAngle + angle * 180 / Math.PI;
 
     this.dispatchEvent({ type: 'change', value: true });
     this.gizmoGroup.rotation.setFromQuaternion(this.target.object.quaternion)

@@ -6,12 +6,21 @@ import type { ErectorJoint, ErectorJointHole, ErectorPipe, ErectorPipeConnection
 import { genPipe } from '~/utils/Erector/pipe'
 export type transform = { id: string, position: Vector3, rotation: Quaternion }
 import erectorComponentDefinition from '~/data/erector_component.json'
+export type PipeJointRelationship = {
+  pipeId: string
+  jointId: string
+  holeId: number
+  connectionType: 'start' | 'end' | 'midway'
+  relationshipType: 'j2p' | 'p2j' // j2p: joint determines pipe, p2j: pipe determines joint
+}
+
 export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
   state: () => ({
     pipes: [] as ErectorPipe[],
     joints: [] as ErectorJoint[],
     instances: [] as { id: string, obj?: Object3D }[],
     renderCount: 0,
+    pipeJointRelationships: [] as PipeJointRelationship[],
   }),
   actions: {
     addPipe(scene: Scene, diameter: number, length: number, id?: string) {//pipeの存在だけを追加
@@ -130,15 +139,20 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
     removeConnection(id: string) {
       const pipe = this.pipes.find(p => p.connections.start?.id === id || p.connections.end?.id === id || p.connections.midway.some(conn => conn.id === id))
       if (!pipe) return
+
       if (pipe.connections.start?.id === id) {
+        this.removeConnectionRelationship(pipe.id, pipe.connections.start.jointId, pipe.connections.start.holeId, 'start')
         pipe.connections.start = undefined
       }
       else if (pipe.connections.end?.id === id) {
+        this.removeConnectionRelationship(pipe.id, pipe.connections.end.jointId, pipe.connections.end.holeId, 'end')
         pipe.connections.end = undefined
       }
       else {
         const index = pipe.connections.midway.findIndex(conn => conn.id === id)
         if (index !== -1) {
+          const midwayConn = pipe.connections.midway[index]
+          this.removeConnectionRelationship(pipe.id, midwayConn.jointId, midwayConn.holeId, 'midway')
           pipe.connections.midway.splice(index, 1)
         }
       }
@@ -172,6 +186,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       this.pipes = []
       this.joints = []
       this.instances = []
+      this.pipeJointRelationships = []
       this.renderCount = 0
     },
     loadFromStructure(structure: { pipes: ErectorPipe[], joints: { id: string, name: string }[], rootTransform?: { pipeId: string, position: [number, number, number], rotation: [number, number, number, number] } }) {
@@ -231,21 +246,52 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
           rootInstance.quaternion.set(...structure.rootTransform.rotation)
         }
       }
-    }
+    },
+    updatePipeJointRelationship(pipeId: string, jointId: string, holeId: number, connectionType: 'start' | 'end' | 'midway', relationshipType: 'j2p' | 'p2j') {
+      // Remove existing relationship for this specific connection
+      this.pipeJointRelationships = this.pipeJointRelationships.filter(rel =>
+        !(rel.pipeId === pipeId && rel.jointId === jointId && rel.holeId === holeId && rel.connectionType === connectionType)
+      )
+
+      // Add new relationship
+      this.pipeJointRelationships.push({
+        pipeId,
+        jointId,
+        holeId,
+        connectionType,
+        relationshipType
+      })
+    },
+
+    getPipeJointRelationship(pipeId: string, jointId: string, holeId: number, connectionType: 'start' | 'end' | 'midway'): 'j2p' | 'p2j' | null {
+      const relationship = this.pipeJointRelationships.find(rel =>
+        rel.pipeId === pipeId && rel.jointId === jointId && rel.holeId === holeId && rel.connectionType === connectionType
+      )
+      return relationship?.relationshipType ?? null
+    },
+
+    removeConnectionRelationship(pipeId: string, jointId: string, holeId: number, connectionType: 'start' | 'end' | 'midway') {
+      this.pipeJointRelationships = this.pipeJointRelationships.filter(rel =>
+        !(rel.pipeId === pipeId && rel.jointId === jointId && rel.holeId === holeId && rel.connectionType === connectionType)
+      )
+    },
   },
   getters: {
     invalidJoints() {
       // jointの座標や向きを検証し、つなげることのできない場所があれば配列として返却
       return []
-    },
-    worldPosition() {
+    }, worldPosition() {
       const updated: string[] = []
       const nextUpdate: string[] = []
       const pipes = this.pipes
       const joints = this.joints
       const instances = this.instances
       const renderCount = this.renderCount++
-      function update(updated: string[], pipe: ErectorPipe, pipeTransform: transform) {
+
+      // Get reference to the store instance
+      const store = this as any
+
+      function update(updated: string[], pipe: ErectorPipe, pipeTransform: transform, updatePipeJointRelationship: (pipeId: string, jointId: string, holeId: number, connectionType: 'start' | 'end' | 'midway', relationshipType: 'j2p' | 'p2j') => void) {
         if (!updated.includes(pipe.id)) {
           // 一つ以上のjointが更新済みなのでそれを探し、pipe自身の座標を更新してupdatedに追加し離脱
           // nextUpdateにまだいるので、次の周回で上のif句に入りpipeに接続された他のjointの座標が更新される
@@ -261,6 +307,8 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
               const hole = joint.holes[start.holeId]
               if (hole) {
                 updated.push(pipe.id)
+                // Record j2p relationship (joint determines pipe position)
+                updatePipeJointRelationship(pipe.id, start.jointId, start.holeId, 'start', 'j2p')
                 const position = jointInstance.position.clone().add(hole.offset.clone().applyQuaternion(jointInstance.quaternion))
                 const rotation = jointInstance.quaternion.clone().multiply(hole.dir.clone()
                   .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), start.rotation / 180 * Math.PI)))
@@ -280,6 +328,8 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
               const hole = joint.holes[end.holeId]
               if (hole) {
                 updated.push(pipe.id)
+                // Record j2p relationship (joint determines pipe position)
+                updatePipeJointRelationship(pipe.id, end.jointId, end.holeId, 'end', 'j2p')
                 const position = jointInstance.position.clone().add(hole.offset.clone().applyQuaternion(jointInstance.quaternion))
                 const rotation = jointInstance.quaternion.clone().multiply(hole.dir.clone()
                   .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), end.rotation / 180 * Math.PI)))
@@ -298,6 +348,8 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
                 const hole = joint.holes[midway.holeId]
                 if (hole) {
                   updated.push(pipe.id)
+                  // Record j2p relationship (joint determines pipe position)
+                  updatePipeJointRelationship(pipe.id, midway.jointId, midway.holeId, 'midway', 'j2p')
                   const position = jointInstance.position.clone().add(hole.offset.clone().applyQuaternion(jointInstance.quaternion))
                   const rotation = jointInstance.quaternion.clone().multiply(hole.dir.clone()
                     .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), midway.rotation / 180 * Math.PI)))
@@ -346,6 +398,8 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
               }
               else {
                 updated.push(pipe.connections.start.jointId)
+                // Record p2j relationship (pipe determines joint position)
+                updatePipeJointRelationship(pipe.id, start.jointId, start.holeId, 'start', 'p2j')
                 if (hole) {
                   /*Unity C#
                     var startJoint = ErectorJoint.joints.Where(j => j.id == start.j_id).First();
@@ -392,6 +446,8 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
               }
               else {
                 updated.push(pipe.connections.end.jointId)
+                // Record p2j relationship (pipe determines joint position)
+                updatePipeJointRelationship(pipe.id, end.jointId, end.holeId, 'end', 'p2j')
                 if (hole) {
                   const rotation = pipeTransform.rotation.clone()
                     .multiply(new Quaternion().setFromEuler(new Euler(0, Math.PI, 0))
@@ -428,6 +484,8 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
               }
               else {
                 updated.push(conn.jointId)
+                // Record p2j relationship (pipe determines joint position)
+                updatePipeJointRelationship(pipe.id, conn.jointId, conn.holeId, 'midway', 'p2j')
                 if (hole && hole.type === "THROUGH") {//midwayにはfixはつけられない
                   /*Unity C#
                     var joint = ErectorJoint.joints.Where(j => j.id == conn.j_id).First();
@@ -470,7 +528,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
             position: pipeObject.position,
             rotation: pipeObject.quaternion
           }
-          update(updated, pipe, updatedTransform)
+          update(updated, pipe, updatedTransform, store.updatePipeJointRelationship.bind(store))
         }
       }
     },
