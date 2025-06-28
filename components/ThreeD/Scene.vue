@@ -5,10 +5,12 @@
 </template>
 
 <script lang="ts" setup>
-import { AmbientLight, AxesHelper, DirectionalLight, GridHelper, PerspectiveCamera, Scene, WebGLRenderer, Color, Vector2, Raycaster, Quaternion, Vector3, Euler, Object3D } from 'three';
+import { AmbientLight, AxesHelper, DirectionalLight, GridHelper, PerspectiveCamera, Scene, WebGLRenderer, Color, Vector2, Raycaster, Quaternion, Vector3, Euler, Object3D, Mesh } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/Addons.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import type { ErectorPipe, ErectorPipeConnection } from '~/types/erector_component';
+import type { ErectorPipe } from '~/types/erector_component';
+import { JointControls } from '~/utils/Erector/JointControls';
+import { degreesToRadians } from '~/utils/angleUtils';
 
 const container = useTemplateRef("container")
 const objectSelection = useObjectSelection()
@@ -16,6 +18,7 @@ const three = useThree()
 let renderer: WebGLRenderer
 let camera: PerspectiveCamera
 let controls: OrbitControls
+let jointControls: JointControls
 let rootPipeId: string
 const erector = useErectorPipeJoint()
 const rootPipeObject: Ref<Object3D | undefined> = ref()
@@ -36,6 +39,14 @@ function selectObject(event: MouseEvent) {
         break
     }
     console.log(rootObject)
+    const jointObject = erector.joints.find(j => j.id === rootObject.name)
+    const pipeObject = erector.pipes.find(p => p.id === rootObject.name)
+    if (jointObject) {
+      jointControls.setTarget(jointObject, rootObject as Mesh)
+    } else {
+      // Clear joint controls if not selecting a joint
+      jointControls.clear()
+    }
     objectSelection.select(rootObject.name)
   }
 }
@@ -112,6 +123,13 @@ const setupScene = () => {
   controls.maxDistance = 100
   controls.maxPolarAngle = Math.PI
 
+  jointControls = new JointControls(camera, renderer.domElement)
+  jointControls.addEventListener('dragging-changed', e => {
+    controls.enabled = !e.value
+  })
+  scene.add(jointControls.gizmoGroup)
+  scene.add(jointControls.debugObjects)
+
   const gridHelper = new GridHelper(10, 10)
   scene.add(gridHelper)
 
@@ -121,7 +139,7 @@ const setupScene = () => {
   erector.loadFromStructure(erector_structure)
   rootPipeId = erector_structure.pipes[0].id
   rootPipeObject.value = erector.instances.find(i => i.id === rootPipeId)?.obj
-  rootPipeObject.value?.rotation.set(0, 40 / 180 * Math.PI, 0)
+  rootPipeObject.value?.rotation.set(0, degreesToRadians(40), 0)
 
   const ambientLight = new AmbientLight(0xffffff, 0.5)
   scene.add(ambientLight)
@@ -141,8 +159,10 @@ const animate = (scene: Scene) => {
       rootPipeId = erector.instances[0].id
       rootPipeObject.value = erector.instances.find(i => i.id === rootPipeId)?.obj
     }
-  } if (rootPipeObject.value) {
-    erector.worldPosition({
+  }
+  if (rootPipeObject.value) {
+    const calculatePosition = erector.calculateWorldPosition()
+    calculatePosition({
       id: rootPipeId, position: rootPipeObject.value?.position.clone() ?? new Vector3(), rotation: new Quaternion().setFromEuler(rootPipeObject.value?.rotation ?? new Euler(0, 0, 0))
     })
   }
@@ -153,6 +173,14 @@ const animate = (scene: Scene) => {
   requestAnimationFrame(() => animate(scene))
   renderer.render(scene, camera)
 }
+
+// Watch for object selection changes to clear gizmo when selection is cleared
+watch(() => objectSelection.object, (newSelection) => {
+  if (!newSelection || newSelection === '') {
+    jointControls?.clear()
+  }
+})
+
 const handleResize = () => {
   if (!container.value) return
   const w = container.value.clientWidth
@@ -168,6 +196,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
+  if (jointControls) jointControls.dispose()
   if (controls) controls.dispose()
   if (renderer) renderer.dispose()
 })

@@ -7,20 +7,20 @@
       <hr>
       <div v-if="selectedObject?.obj">
         <div>
-          position: <input type="number" :value="selectedObject.obj.position.x"
-            @change="selectedObject.obj.position.x = Number.parseFloat(($event.target as HTMLInputElement).value)">,
-          <input type="number" :value="selectedObject.obj.position.y"
-            @change="selectedObject.obj.position.y = Number.parseFloat(($event.target as HTMLInputElement).value)">,
-          <input type="number" :value="selectedObject.obj.position.z"
-            @change="selectedObject.obj.position.z = Number.parseFloat(($event.target as HTMLInputElement).value)">
+          position: <input type="number" :value="currentPosition[0]"
+            @change="updatePosition(0, Number.parseFloat(($event.target as HTMLInputElement).value))">,
+          <input type="number" :value="currentPosition[1]"
+            @change="updatePosition(1, Number.parseFloat(($event.target as HTMLInputElement).value))">,
+          <input type="number" :value="currentPosition[2]"
+            @change="updatePosition(2, Number.parseFloat(($event.target as HTMLInputElement).value))">
         </div>
         <div>
-          rotation: <input type="number" :value="selectedObject.obj.rotation.x * 180 / Math.PI"
-            @change="selectedObject.obj.rotation.x = Number.parseFloat(($event.target as HTMLInputElement).value) / 180 * Math.PI">,
-          <input type="number" :value="selectedObject.obj.rotation.y * 180 / Math.PI"
-            @change="selectedObject.obj.rotation.y = Number.parseFloat(($event.target as HTMLInputElement).value) / 180 * Math.PI">,
-          <input type="number" :value="selectedObject.obj.rotation.z * 180 / Math.PI"
-            @change="selectedObject.obj.rotation.z = Number.parseFloat(($event.target as HTMLInputElement).value) / 180 * Math.PI">
+          rotation: <input type="number" :value="currentRotation[0]"
+            @change="updateRotation(0, Number.parseFloat(($event.target as HTMLInputElement).value))">,
+          <input type="number" :value="currentRotation[1]"
+            @change="updateRotation(1, Number.parseFloat(($event.target as HTMLInputElement).value))">,
+          <input type="number" :value="currentRotation[2]"
+            @change="updateRotation(2, Number.parseFloat(($event.target as HTMLInputElement).value))">
         </div>
       </div>
       <div>{{ selectedPipe.length * 1000 }}mm
@@ -52,7 +52,12 @@
             </select>
           </div>
           <div>Rotation: <input type="number" :value="connStart.rotation"
+              @input="connStart.rotation = Number.parseFloat(($event.target as HTMLInputElement).value)"
               @change="updateConnection($event, selectedPipe.id, connStart.id, 'rotation')">
+            <span v-if="connStart" style="margin-left: 10px; color: #666;">
+              rel: {{ erector.getPipeJointRelationship(selectedPipe.id, connStart.jointId, connStart.holeId, 'start') ||
+                'none' }}
+            </span>
           </div>
         </div>
         <div>
@@ -74,7 +79,12 @@
             </select>
           </div>
           <div>Rotation: <input type="number" :value="connEnd.rotation"
+              @input="connEnd.rotation = Number.parseFloat(($event.target as HTMLInputElement).value)"
               @change="updateConnection($event, selectedPipe.id, connEnd.id, 'rotation')">
+            <span v-if="connEnd" style="margin-left: 10px; color: #666;">
+              rel: {{ erector.getPipeJointRelationship(selectedPipe.id, connEnd.jointId, connEnd.holeId, 'end') ||
+                'none' }}
+            </span>
           </div>
         </div>
         <div>
@@ -95,10 +105,29 @@
           </div>
           <div>Rotation:
             <input type="number" :value="conn.rotation"
+              @input="conn.rotation = Number.parseFloat(($event.target as HTMLInputElement).value)"
               @change="updateConnection($event, selectedPipe.id, conn.id, 'rotation')">
+            <span style="margin-left: 10px; color: #666;">
+              rel: {{ erector.getPipeJointRelationship(selectedPipe.id, conn.jointId, conn.holeId, 'midway') || 'none'
+              }}
+            </span>
           </div>
-          <div>Position: <input type="number" v-model="conn.position" min="0" max="1" step="0.01"> : {{
-            conn.position * selectedPipe.length * 1000 }}mm</div>
+          <div>Position: <input type="number" :value="conn.position" min="0" max="1" step="0.01"
+              @input="conn.position = Number.parseFloat(($event.target as HTMLInputElement).value)"
+              @change="updateConnection($event, selectedPipe.id, conn.id, 'position')"> : {{
+                conn.position * selectedPipe.length * 1000 }}mm</div>
+        </div>
+      </div>
+      <div>
+        <h4>Pipe-Joint Relationships</h4>
+        <div v-if="selectedPipe">
+          <div v-for="rel in pipeRelationships" :key="`${rel.jointId}-${rel.holeId}-${rel.connectionType}`"
+            style="font-size: 0.9em; color: #666; margin: 2px 0;">
+            {{ rel.connectionType }}: {{ rel.jointId }} hole{{ rel.holeId }} → {{ rel.relationshipType }}
+          </div>
+          <div v-if="pipeRelationships.length === 0" style="color: #999; font-style: italic;">
+            No relationships recorded yet
+          </div>
         </div>
       </div>
     </div>
@@ -107,12 +136,20 @@
       <hr>
       <div v-if="selectedObject?.obj">
         <div>
-          position:{{ selectedObject.obj.position.x }} , {{ selectedObject.obj.position.y }} ,
-          {{ selectedObject.obj.position.z }}
+          position: <input type="number" :value="currentPosition[0]"
+            @change="updatePosition(0, Number.parseFloat(($event.target as HTMLInputElement).value))">,
+          <input type="number" :value="currentPosition[1]"
+            @change="updatePosition(1, Number.parseFloat(($event.target as HTMLInputElement).value))">,
+          <input type="number" :value="currentPosition[2]"
+            @change="updatePosition(2, Number.parseFloat(($event.target as HTMLInputElement).value))">
         </div>
         <div>
-          rotation: {{ selectedObject.obj.rotation.x }} , {{ selectedObject.obj.rotation.y }} ,
-          {{ selectedObject.obj.rotation.z }}
+          rotation: <input type="number" :value="currentRotation[0]"
+            @change="updateRotation(0, Number.parseFloat(($event.target as HTMLInputElement).value))">,
+          <input type="number" :value="currentRotation[1]"
+            @change="updateRotation(1, Number.parseFloat(($event.target as HTMLInputElement).value))">,
+          <input type="number" :value="currentRotation[2]"
+            @change="updateRotation(2, Number.parseFloat(($event.target as HTMLInputElement).value))">
         </div>
       </div>
       <div>Joint ID: {{ selectedJoint.id }}</div>
@@ -124,12 +161,52 @@
 <script lang="ts" setup>
 import { useObjectSelection } from '~/stores/ObjectSelection';
 import { isErectorPipe, type ErectorJoint, type ErectorPipe, type ErectorPipeConnection } from '~/types/erector_component';
+import { radiansToDegrees, degreesToRadians } from '~/utils/angleUtils';
 
 const objectSelection = useObjectSelection()
 const erector = useErectorPipeJoint()
 const selectedPipe = computed(() => erector.pipes.find(p => p.id === objectSelection.object))
 const selectedJoint = computed(() => erector.joints.find(j => j.id === objectSelection.object))
 const selectedObject = computed(() => erector.instances.find(i => i.id === objectSelection.object))
+
+// 現在の位置と回転を取得するcomputed値
+const currentPosition = computed(() => {
+  if (!objectSelection.object) return [0, 0, 0]
+  return erector.getObjectPosition(objectSelection.object) || [0, 0, 0]
+})
+
+const currentRotation = computed(() => {
+  if (!objectSelection.object) return [0, 0, 0]
+  return erector.getObjectRotation(objectSelection.object) || [0, 0, 0]
+})
+
+// 位置更新関数
+function updatePosition(axis: number, value: number) {
+  if (!objectSelection.object) return
+  if (isNaN(value)) return
+
+  const newPosition = [...currentPosition.value] as [number, number, number]
+  newPosition[axis] = value
+
+  erector.updateObjectPosition(objectSelection.object, newPosition)
+
+  // 依存関係を再計算
+  erector.recalculateObjectDependencies(objectSelection.object)
+}
+
+// 回転更新関数
+function updateRotation(axis: number, value: number) {
+  if (!objectSelection.object) return
+  if (isNaN(value)) return
+
+  const newRotation = [...currentRotation.value] as [number, number, number]
+  newRotation[axis] = value
+
+  erector.updateObjectRotation(objectSelection.object, newRotation)
+
+  // 依存関係を再計算
+  erector.recalculateObjectDependencies(objectSelection.object)
+}
 
 function lenChange(event: Event, pipe: ErectorPipe) {
   const target = event.target as HTMLInputElement
@@ -146,6 +223,11 @@ const connMidJoint = computed(() => (i: number) => {
   const conn = selectedPipe.value?.connections.midway[i]
   if (!conn) return undefined
   return erector.joints.find(j => j.id === conn.jointId)
+})
+
+const pipeRelationships = computed(() => {
+  if (!selectedPipe.value) return []
+  return erector.pipeJointRelationships.filter(rel => rel.pipeId === selectedPipe.value!.id)
 })
 
 function removeObject(obj: ErectorPipe | ErectorJoint) {
@@ -172,32 +254,26 @@ function removeObject(obj: ErectorPipe | ErectorJoint) {
 }
 
 function updateConnection(event: Event, pipeId: string, id: string, key: keyof ErectorPipeConnection) {
-  const target = event.target as HTMLSelectElement;
+  console.log(`Updating connection ${id} on pipe ${pipeId} with key ${key}`);
+  const target = event.target as HTMLSelectElement | HTMLInputElement;
   const value = target.value;
-  if (!value) return;
+  if (value === '') return;
 
-  const pipe = erector.pipes.find(p => p.id === pipeId);
-  if (!pipe) return;
+  //console.log(`connection: ${connection} toUpdate: ${JSON.stringify(connectionToUpdate)}`)
+  console.log(`Updating connection ${id} on pipe ${pipeId} with key ${key} and value ${value}`);
 
-  // 接続オブジェクトを取得
-  let connection: ErectorPipeConnection | undefined;
-
-  if (pipe.connections.start?.id === id) {
-    connection = pipe.connections.start;
-  } else if (pipe.connections.end?.id === id) {
-    connection = pipe.connections.end;
-  } else {
-    connection = pipe.connections.midway.find(c => c.id === id);
-  }
-
-  if (!connection) return;
+  // 更新オブジェクトを作成
+  const updateObj: Partial<ErectorPipeConnection> = {};
 
   // 値を適切に設定
   if (key === 'jointId' || key === 'id') {
-    connection[key] = value;
+    updateObj[key] = value;
   } else {
-    connection[key] = Number.parseFloat(value);
+    updateObj[key] = Number.parseFloat(value);
   }
+
+  // ErectorPipeJointストアのupdateConnectionメソッドを使用
+  erector.updateConnection(id, updateObj);
 }
 
 </script>
