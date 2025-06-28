@@ -9,7 +9,7 @@ import { AmbientLight, AxesHelper, DirectionalLight, GridHelper, PerspectiveCame
 import { GLTFLoader } from 'three/examples/jsm/Addons.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { ErectorPipe } from '~/types/erector_component';
-import { JointControls } from '~/utils/Erector/JointControls_2';
+import { JointControls } from '~/utils/Erector/JointControls';
 
 const container = useTemplateRef("container")
 const objectSelection = useObjectSelection()
