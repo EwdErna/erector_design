@@ -210,12 +210,9 @@ export class JointControl extends EventDispatcher<{
       const material = gizmo.material;
       if (material instanceof Material) {
         material.blendColor.setHex(0xff0000);
-        console.log('found one')
       } else if (Array.isArray(material)) {
-        console.log(`found ${material.length}`)
         material.forEach(m => m.blendColor.setHex(0xff0000));
       } else {
-        console.log(material)
       }
 
       this.domElement.style.cursor = 'grabbing';
@@ -371,7 +368,6 @@ export class JointControl extends EventDispatcher<{
     this.intersection = intersection.clone();
     if (!this.intersectionStart) {
       this.intersectionStart = intersection.clone();
-      console.log(`intersectionStart: ${this.intersectionStart.toArray()}`)
     }
 
     // ギズモ中心からの相対ベクトルを計算

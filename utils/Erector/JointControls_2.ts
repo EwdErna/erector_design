@@ -122,7 +122,6 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
     // gizmoGroup内のオブジェクトと交差するかチェック
     const intersects = raycaster.intersectObjects(this.gizmoGroup.children);
     if (intersects.length > 0) {
-      console.log("Gizmo clicked:", intersects[0].object);
       if (!this.isDragging) {
         this.isDragging = true;
         this.domElement.style.cursor = 'grabbing';
@@ -179,7 +178,6 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
     const angle = Math.atan2(normal.clone().dot(a.clone().cross(b)), a.clone().dot(b));
     const dragging = this.dragging;
     const connections = useErectorPipeJoint()
-    console.log(`angle: ${angle} normal: ${normal.toArray()} a: ${a.toArray()} b: ${b.toArray()}`);
     const targetPipe = connections.pipes.find(p => {
       if (p.connections.start && p.connections.start.jointId === this.target?.joint.id && p.connections.start.holeId === dragging.userData.index) return true;
       if (p.connections.end && p.connections.end.jointId === this.target?.joint.id && p.connections.end.holeId === dragging.userData.index) return true;
@@ -222,9 +220,6 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
       const rotationMultiplier = relationshipType === 'p2j' ? -1 : 1
       const adjustedAngle = angle * rotationMultiplier
 
-      console.log(`startAngle: ${this.dragStartAngle} deg`);
-      console.log(`relationship: ${relationshipType}, multiplier: ${rotationMultiplier}`);
-      console.log(`rotation: ${this.dragStartAngle + adjustedAngle * 180 / Math.PI} deg`);
       connections.updateConnection(targetConnection.id, { rotation: this.dragStartAngle + adjustedAngle * 180 / Math.PI });
       this.currentAngle = this.dragStartAngle + adjustedAngle * 180 / Math.PI;
     } else {
