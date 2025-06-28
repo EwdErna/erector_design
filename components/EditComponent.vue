@@ -7,20 +7,20 @@
       <hr>
       <div v-if="selectedObject?.obj">
         <div>
-          position: <input type="number" :value="selectedObject.obj.position.x"
-            @change="selectedObject.obj.position.x = Number.parseFloat(($event.target as HTMLInputElement).value)">,
-          <input type="number" :value="selectedObject.obj.position.y"
-            @change="selectedObject.obj.position.y = Number.parseFloat(($event.target as HTMLInputElement).value)">,
-          <input type="number" :value="selectedObject.obj.position.z"
-            @change="selectedObject.obj.position.z = Number.parseFloat(($event.target as HTMLInputElement).value)">
+          position: <input type="number" :value="currentPosition[0]"
+            @change="updatePosition(0, Number.parseFloat(($event.target as HTMLInputElement).value))">,
+          <input type="number" :value="currentPosition[1]"
+            @change="updatePosition(1, Number.parseFloat(($event.target as HTMLInputElement).value))">,
+          <input type="number" :value="currentPosition[2]"
+            @change="updatePosition(2, Number.parseFloat(($event.target as HTMLInputElement).value))">
         </div>
         <div>
-          rotation: <input type="number" :value="selectedObject.obj.rotation.x * 180 / Math.PI"
-            @change="selectedObject.obj.rotation.x = Number.parseFloat(($event.target as HTMLInputElement).value) / 180 * Math.PI">,
-          <input type="number" :value="selectedObject.obj.rotation.y * 180 / Math.PI"
-            @change="selectedObject.obj.rotation.y = Number.parseFloat(($event.target as HTMLInputElement).value) / 180 * Math.PI">,
-          <input type="number" :value="selectedObject.obj.rotation.z * 180 / Math.PI"
-            @change="selectedObject.obj.rotation.z = Number.parseFloat(($event.target as HTMLInputElement).value) / 180 * Math.PI">
+          rotation: <input type="number" :value="currentRotation[0]"
+            @change="updateRotation(0, Number.parseFloat(($event.target as HTMLInputElement).value))">,
+          <input type="number" :value="currentRotation[1]"
+            @change="updateRotation(1, Number.parseFloat(($event.target as HTMLInputElement).value))">,
+          <input type="number" :value="currentRotation[2]"
+            @change="updateRotation(2, Number.parseFloat(($event.target as HTMLInputElement).value))">
         </div>
       </div>
       <div>{{ selectedPipe.length * 1000 }}mm
@@ -136,12 +136,20 @@
       <hr>
       <div v-if="selectedObject?.obj">
         <div>
-          position:{{ selectedObject.obj.position.x }} , {{ selectedObject.obj.position.y }} ,
-          {{ selectedObject.obj.position.z }}
+          position: <input type="number" :value="currentPosition[0]"
+            @change="updatePosition(0, Number.parseFloat(($event.target as HTMLInputElement).value))">,
+          <input type="number" :value="currentPosition[1]"
+            @change="updatePosition(1, Number.parseFloat(($event.target as HTMLInputElement).value))">,
+          <input type="number" :value="currentPosition[2]"
+            @change="updatePosition(2, Number.parseFloat(($event.target as HTMLInputElement).value))">
         </div>
         <div>
-          rotation: {{ selectedObject.obj.rotation.x }} , {{ selectedObject.obj.rotation.y }} ,
-          {{ selectedObject.obj.rotation.z }}
+          rotation: <input type="number" :value="currentRotation[0]"
+            @change="updateRotation(0, Number.parseFloat(($event.target as HTMLInputElement).value))">,
+          <input type="number" :value="currentRotation[1]"
+            @change="updateRotation(1, Number.parseFloat(($event.target as HTMLInputElement).value))">,
+          <input type="number" :value="currentRotation[2]"
+            @change="updateRotation(2, Number.parseFloat(($event.target as HTMLInputElement).value))">
         </div>
       </div>
       <div>Joint ID: {{ selectedJoint.id }}</div>
@@ -153,12 +161,52 @@
 <script lang="ts" setup>
 import { useObjectSelection } from '~/stores/ObjectSelection';
 import { isErectorPipe, type ErectorJoint, type ErectorPipe, type ErectorPipeConnection } from '~/types/erector_component';
+import { radiansToDegrees, degreesToRadians } from '~/utils/angleUtils';
 
 const objectSelection = useObjectSelection()
 const erector = useErectorPipeJoint()
 const selectedPipe = computed(() => erector.pipes.find(p => p.id === objectSelection.object))
 const selectedJoint = computed(() => erector.joints.find(j => j.id === objectSelection.object))
 const selectedObject = computed(() => erector.instances.find(i => i.id === objectSelection.object))
+
+// 現在の位置と回転を取得するcomputed値
+const currentPosition = computed(() => {
+  if (!objectSelection.object) return [0, 0, 0]
+  return erector.getObjectPosition(objectSelection.object) || [0, 0, 0]
+})
+
+const currentRotation = computed(() => {
+  if (!objectSelection.object) return [0, 0, 0]
+  return erector.getObjectRotation(objectSelection.object) || [0, 0, 0]
+})
+
+// 位置更新関数
+function updatePosition(axis: number, value: number) {
+  if (!objectSelection.object) return
+  if (isNaN(value)) return
+
+  const newPosition = [...currentPosition.value] as [number, number, number]
+  newPosition[axis] = value
+
+  erector.updateObjectPosition(objectSelection.object, newPosition)
+
+  // 依存関係を再計算
+  erector.recalculateObjectDependencies(objectSelection.object)
+}
+
+// 回転更新関数
+function updateRotation(axis: number, value: number) {
+  if (!objectSelection.object) return
+  if (isNaN(value)) return
+
+  const newRotation = [...currentRotation.value] as [number, number, number]
+  newRotation[axis] = value
+
+  erector.updateObjectRotation(objectSelection.object, newRotation)
+
+  // 依存関係を再計算
+  erector.recalculateObjectDependencies(objectSelection.object)
+}
 
 function lenChange(event: Event, pipe: ErectorPipe) {
   const target = event.target as HTMLInputElement

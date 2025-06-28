@@ -4,6 +4,7 @@ import { GLTFLoader } from 'three/examples/jsm/Addons.js'
 import { generateUUID } from 'three/src/math/MathUtils.js'
 import type { ErectorJoint, ErectorJointHole, ErectorPipe, ErectorPipeConnection } from '~/types/erector_component'
 import { genPipe } from '~/utils/Erector/pipe'
+import { degreesToRadians, radiansToDegrees } from '~/utils/angleUtils'
 export type transform = { id: string, position: Vector3, rotation: Quaternion }
 import erectorComponentDefinition from '~/data/erector_component.json'
 export type PipeJointRelationship = {
@@ -275,6 +276,153 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
         !(rel.pipeId === pipeId && rel.jointId === jointId && rel.holeId === holeId && rel.connectionType === connectionType)
       )
     },
+
+    /**
+     * オブジェクトの位置を更新する
+     * @param id パイプまたはジョイントのID
+     * @param position 新しい位置 [x, y, z]
+     */
+    updateObjectPosition(id: string, position: [number, number, number]) {
+      const instance = this.instances.find(i => i.id === id)
+      if (!instance?.obj) {
+        console.warn(`Object with id ${id} not found or has no 3D object`)
+        return
+      }
+
+      instance.obj.position.set(...position)
+
+      // 座標変更をログに記録（デバッグ用）
+      console.log(`Updated position for ${id}: [${position.join(', ')}]`)
+    },
+
+    /**
+     * オブジェクトの回転を更新する（度数で指定）
+     * @param id パイプまたはジョイントのID
+     * @param rotation 新しい回転 [x, y, z] (度数)
+     */
+    updateObjectRotation(id: string, rotation: [number, number, number]) {
+      const instance = this.instances.find(i => i.id === id)
+      if (!instance?.obj) {
+        console.warn(`Object with id ${id} not found or has no 3D object`)
+        return
+      }
+
+      // 度数をラジアンに変換してから設定
+      instance.obj.rotation.set(
+        degreesToRadians(rotation[0]),
+        degreesToRadians(rotation[1]),
+        degreesToRadians(rotation[2])
+      )
+
+      // 回転変更をログに記録（デバッグ用）
+      console.log(`Updated rotation for ${id}: [${rotation.join(', ')}]° -> [${instance.obj.rotation.x}, ${instance.obj.rotation.y}, ${instance.obj.rotation.z}] rad`)
+    },
+
+    /**
+     * オブジェクトの位置と回転を同時に更新する
+     * @param id パイプまたはジョイントのID
+     * @param transform 新しい変換情報
+     */
+    updateObjectTransform(id: string, transform: {
+      position?: [number, number, number],
+      rotation?: [number, number, number]
+    }) {
+      if (transform.position) {
+        this.updateObjectPosition(id, transform.position)
+      }
+      if (transform.rotation) {
+        this.updateObjectRotation(id, transform.rotation)
+      }
+    },
+
+    /**
+     * オブジェクトの現在の位置を取得する
+     * @param id パイプまたはジョイントのID
+     * @returns 位置 [x, y, z] または undefined
+     */
+    getObjectPosition(id: string): [number, number, number] | undefined {
+      const instance = this.instances.find(i => i.id === id)
+      if (!instance?.obj) {
+        return undefined
+      }
+      return [instance.obj.position.x, instance.obj.position.y, instance.obj.position.z]
+    },
+
+    /**
+     * オブジェクトの現在の回転を取得する（度数で返す）
+     * @param id パイプまたはジョイントのID  
+     * @returns 回転 [x, y, z] (度数) または undefined
+     */
+    getObjectRotation(id: string): [number, number, number] | undefined {
+      const instance = this.instances.find(i => i.id === id)
+      if (!instance?.obj) {
+        return undefined
+      }
+      return [
+        radiansToDegrees(instance.obj.rotation.x),
+        radiansToDegrees(instance.obj.rotation.y),
+        radiansToDegrees(instance.obj.rotation.z)
+      ]
+    },
+
+    /**
+     * オブジェクトの手動移動後に依存関係を再計算する
+     * パイプやジョイントの位置が手動で変更された場合、接続されたオブジェクトの配置を更新する
+     * @param id 変更されたオブジェクトのID
+     */
+    recalculateObjectDependencies(id: string) {
+      // オブジェクトの種類を判定
+      const pipe = this.pipes.find(p => p.id === id)
+      const joint = this.joints.find(j => j.id === id)
+
+      if (pipe) {
+        // パイプが移動された場合、接続されたジョイントの位置を再計算
+        console.log(`Recalculating dependencies for pipe ${id}`)
+        this.recalculatePipeDependencies(pipe)
+      } else if (joint) {
+        // ジョイントが移動された場合、接続されたパイプの位置を再計算
+        console.log(`Recalculating dependencies for joint ${id}`)
+        this.recalculateJointDependencies(joint)
+      }
+
+      // レンダリングカウントを増やして更新をトリガー
+      this.renderCount++
+    },
+
+    /**
+     * パイプの依存関係を再計算（私的メソッド）
+     */
+    recalculatePipeDependencies(pipe: ErectorPipe) {
+      // パイプの移動により影響を受けるジョイントを更新
+      // このメソッドは worldPosition getter の計算ロジックを使用
+      const dependencies = []
+
+      if (pipe.connections.start) {
+        dependencies.push({ jointId: pipe.connections.start.jointId, connectionType: 'start' })
+      }
+      if (pipe.connections.end) {
+        dependencies.push({ jointId: pipe.connections.end.jointId, connectionType: 'end' })
+      }
+      pipe.connections.midway.forEach(conn => {
+        dependencies.push({ jointId: conn.jointId, connectionType: 'midway' })
+      })
+
+      console.log(`Pipe ${pipe.id} has ${dependencies.length} joint dependencies`)
+    },
+
+    /**
+     * ジョイントの依存関係を再計算（私的メソッド）
+     */
+    recalculateJointDependencies(joint: ErectorJoint) {
+      // ジョイントの移動により影響を受けるパイプを更新
+      const connectedPipes = this.pipes.filter(pipe => {
+        return (pipe.connections.start?.jointId === joint.id) ||
+          (pipe.connections.end?.jointId === joint.id) ||
+          pipe.connections.midway.some(conn => conn.jointId === joint.id)
+      })
+
+      console.log(`Joint ${joint.id} affects ${connectedPipes.length} pipes`)
+    },
   },
   getters: {
     invalidJoints() {
@@ -311,7 +459,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
                 updatePipeJointRelationship(pipe.id, start.jointId, start.holeId, 'start', 'j2p')
                 const position = jointInstance.position.clone().add(hole.offset.clone().applyQuaternion(jointInstance.quaternion))
                 const rotation = jointInstance.quaternion.clone().multiply(hole.dir.clone()
-                  .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), start.rotation / 180 * Math.PI)))
+                  .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), degreesToRadians(start.rotation))))
                 pipeTransform.position.set(...position.toArray())
                 pipeTransform.rotation.set(...rotation.toArray())
                 // 座標を更新したのでもう離脱していい
@@ -332,7 +480,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
                 updatePipeJointRelationship(pipe.id, end.jointId, end.holeId, 'end', 'j2p')
                 const position = jointInstance.position.clone().add(hole.offset.clone().applyQuaternion(jointInstance.quaternion))
                 const rotation = jointInstance.quaternion.clone().multiply(hole.dir.clone()
-                  .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), end.rotation / 180 * Math.PI)))
+                  .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), degreesToRadians(end.rotation))))
                 pipeTransform.position.set(...position.toArray())
                 pipeTransform.rotation.set(...rotation.toArray())
                 // 座標を更新したのでもう離脱していい
@@ -352,7 +500,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
                   updatePipeJointRelationship(pipe.id, midway.jointId, midway.holeId, 'midway', 'j2p')
                   const position = jointInstance.position.clone().add(hole.offset.clone().applyQuaternion(jointInstance.quaternion))
                   const rotation = jointInstance.quaternion.clone().multiply(hole.dir.clone()
-                    .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), midway.rotation / 180 * Math.PI)))
+                    .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), degreesToRadians(midway.rotation))))
                   pipeTransform.position.set(...position.toArray())
                   pipeTransform.rotation.set(...rotation.toArray())
                   // 座標を更新したのでもう離脱していい
@@ -410,7 +558,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
                     startJoint.transform.position = transform.position + r * -startHole.offset;
                    */
                   const holeDir = new Euler().setFromQuaternion(hole.dir)
-                  const pipeZRot = new Quaternion().setFromEuler(new Euler(0, 0, start.rotation / 180 * Math.PI))
+                  const pipeZRot = new Quaternion().setFromEuler(new Euler(0, 0, degreesToRadians(start.rotation)))
                   const invertedHoleDir = hole.dir.clone().multiply(pipeZRot).invert()
                   const rotation = pipeTransform.rotation.clone().multiply(invertedHoleDir)
                   const rotatedHoleOffset = hole.offset.clone().applyQuaternion(rotation)
@@ -452,7 +600,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
                   const rotation = pipeTransform.rotation.clone()
                     .multiply(new Quaternion().setFromEuler(new Euler(0, Math.PI, 0))
                       .multiply(hole.dir.clone()
-                        .multiply(new Quaternion().setFromEuler(new Euler(0, 0, end.rotation / 180 * Math.PI))).invert()))
+                        .multiply(new Quaternion().setFromEuler(new Euler(0, 0, degreesToRadians(end.rotation)))).invert()))
                   const position = pipeTransform.position.clone().add(new Vector3(0, 0, 1).applyQuaternion(pipeTransform.rotation).multiplyScalar(pipe.length)).add(hole.offset.clone().negate().applyQuaternion(rotation))
                   const target = instances.find(i => i.id === joint.id)?.obj;
                   target?.position.set(...position.toArray())
@@ -496,7 +644,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
                    */
                   const rotation = pipeTransform.rotation.clone()
                     .multiply(hole.dir.clone()
-                      .multiply(new Quaternion().setFromEuler(new Euler(0, 0, conn.rotation / 180 * Math.PI))).invert())
+                      .multiply(new Quaternion().setFromEuler(new Euler(0, 0, degreesToRadians(conn.rotation)))).invert())
                   const position = pipeTransform.position.clone().add(new Vector3(0, 0, 1).applyQuaternion(pipeTransform.rotation).multiplyScalar(pipe.length * conn.position)).add(hole.offset.clone().applyQuaternion(rotation))
                   const target = instances.find(i => i.id === joint.id)?.obj;
                   target?.position.set(...position.toArray())

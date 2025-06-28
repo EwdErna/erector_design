@@ -1,6 +1,7 @@
 import { BufferGeometry, Camera, Controls, Euler, Group, Line, Mesh, MeshBasicMaterial, Plane, Quaternion, Raycaster, SphereGeometry, TorusGeometry, Vector2, Vector3 } from "three";
 import { definitions } from "@/utils/Erector/erectorComponentDefinition";
 import type { ErectorJoint, ErectorPipeConnection } from "~/types/erector_component";
+import { radiansToDegrees } from "~/utils/angleUtils";
 
 export class JointControls extends Controls<{ change: { value: boolean }, 'dragging-changed': { value: boolean } }> {
   gizmoGroup: Group = new Group()
@@ -220,11 +221,11 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
       const rotationMultiplier = relationshipType === 'p2j' ? -1 : 1
       const adjustedAngle = angle * rotationMultiplier
 
-      connections.updateConnection(targetConnection.id, { rotation: this.dragStartAngle + adjustedAngle * 180 / Math.PI });
-      this.currentAngle = this.dragStartAngle + adjustedAngle * 180 / Math.PI;
+      connections.updateConnection(targetConnection.id, { rotation: this.dragStartAngle + radiansToDegrees(adjustedAngle) });
+      this.currentAngle = this.dragStartAngle + radiansToDegrees(adjustedAngle);
     } else {
       // Fallback if no connection found
-      this.currentAngle = this.dragStartAngle + angle * 180 / Math.PI;
+      this.currentAngle = this.dragStartAngle + radiansToDegrees(angle);
     }
 
     this.dispatchEvent({ type: 'change', value: true });

@@ -10,6 +10,7 @@ import { GLTFLoader } from 'three/examples/jsm/Addons.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { ErectorPipe } from '~/types/erector_component';
 import { JointControls } from '~/utils/Erector/JointControls';
+import { degreesToRadians } from '~/utils/angleUtils';
 
 const container = useTemplateRef("container")
 const objectSelection = useObjectSelection()
@@ -138,7 +139,7 @@ const setupScene = () => {
   erector.loadFromStructure(erector_structure)
   rootPipeId = erector_structure.pipes[0].id
   rootPipeObject.value = erector.instances.find(i => i.id === rootPipeId)?.obj
-  rootPipeObject.value?.rotation.set(0, 40 / 180 * Math.PI, 0)
+  rootPipeObject.value?.rotation.set(0, degreesToRadians(40), 0)
 
   const ambientLight = new AmbientLight(0xffffff, 0.5)
   scene.add(ambientLight)
