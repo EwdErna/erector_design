@@ -42,6 +42,9 @@ function selectObject(event: MouseEvent) {
     const pipeObject = erector.pipes.find(p => p.id === rootObject.name)
     if (jointObject) {
       jointControls.setTarget(jointObject, rootObject as Mesh)
+    } else {
+      // Clear joint controls if not selecting a joint
+      jointControls.clear()
     }
     objectSelection.select(rootObject.name)
   }
@@ -168,6 +171,14 @@ const animate = (scene: Scene) => {
   requestAnimationFrame(() => animate(scene))
   renderer.render(scene, camera)
 }
+
+// Watch for object selection changes to clear gizmo when selection is cleared
+watch(() => objectSelection.object, (newSelection) => {
+  if (!newSelection || newSelection === '') {
+    jointControls?.clear()
+  }
+})
+
 const handleResize = () => {
   if (!container.value) return
   const w = container.value.clientWidth

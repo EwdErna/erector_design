@@ -96,9 +96,17 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
   }
   clear() {
     this.gizmoGroup.clear()
+    this.debugObjects.clear()
     this.gizmos.forEach(g => g.clear())
     this.gizmos = []
     this.target = null
+    this.isDragging = false
+    this.dragging = null
+    this.draggingPlane = null
+    this.dragStartLine = null
+    this.dragStart = null
+    this.dragCurrent = null
+    this.draggingLine = null
   }
 
   onMouseDown(event: MouseEvent) {

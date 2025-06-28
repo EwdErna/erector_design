@@ -88,9 +88,13 @@ function handleFileUpload(event: Event) {
       }
 
       const erector = useErectorPipeJoint()
+      const objectSelection = useObjectSelection()
 
       // Clear all existing instances and data
       erector.clearAll()
+
+      // Clear object selection to reset gizmo state
+      objectSelection.select('')
 
       // Load the new structure
       erector.loadFromStructure(structure)
