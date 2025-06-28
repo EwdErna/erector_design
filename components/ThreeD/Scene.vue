@@ -195,6 +195,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
+  if (jointControls) jointControls.dispose()
   if (controls) controls.dispose()
   if (renderer) renderer.dispose()
 })

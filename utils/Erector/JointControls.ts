@@ -96,6 +96,9 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
     })
   }
   clear() {
+    // Properly dispose of debug objects before clearing
+    this.disposeDebugObjects()
+
     this.gizmoGroup.clear()
     this.debugObjects.clear()
     this.gizmos.forEach(g => g.clear())
@@ -140,6 +143,10 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
       // this.normalLine = new Line(normalLineGeometry, new MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.5 }));
       // this.debugObjects.add(this.normalLine);
       this.dragStart = intersects[0].point.clone().sub(this.gizmoGroup.localToWorld(this.dragging.position.clone()));
+
+      // Dispose existing dragStartLine if it exists
+      this.dragStartLine = this.disposeDebugLine(this.dragStartLine)
+
       const dragStartLineGeometry = new BufferGeometry().setFromPoints([this.gizmoGroup.localToWorld(this.dragging.position.clone()), intersects[0].point]);
       this.dragStartLine = new Line(dragStartLineGeometry, new MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.5 }));
       this.debugObjects.add(this.dragStartLine);
@@ -170,8 +177,8 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
       this.debugObjects.add(this.draggingLine);
     }
     else {
-      this.draggingLine.geometry.setFromPoints([this.gizmoGroup.localToWorld(this.dragging.position.clone()), intersection]);
-      this.draggingLine.geometry.attributes.position.needsUpdate = true;
+      // Safely update the line geometry, disposing the old one
+      this.updateLineGeometry(this.draggingLine, [this.gizmoGroup.localToWorld(this.dragging.position.clone()), intersection]);
     }
     const normal = new Vector3().fromArray(this.dragging.userData.normal).applyQuaternion(this.target.object.quaternion).normalize();
     const a = this.dragStart?.clone() ?? new Vector3(0, 0, 0);
@@ -238,7 +245,11 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
         (this.dragging.material as MeshBasicMaterial).opacity = 0.5;
         this.dragging = null;
       }
+
+      // Properly dispose of debug objects before clearing
+      this.disposeDebugObjects();
       this.debugObjects.clear();
+
       this.draggingPlane = null;
       this.draggingLine = null;
       this.dragStartLine = null;
@@ -248,5 +259,100 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
       this.dispatchEvent({ type: 'dragging-changed', value: false });
       this.dispatchEvent({ type: 'change', value: false });
     }
+  }
+
+  /**
+   * Properly dispose of debug objects to prevent memory leaks
+   */
+  private disposeDebugObjects() {
+    this.debugObjects.traverse((child) => {
+      if (child instanceof Mesh) {
+        if (child.geometry) {
+          child.geometry.dispose()
+        }
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach(material => material.dispose())
+          } else {
+            child.material.dispose()
+          }
+        }
+      } else if (child instanceof Line) {
+        if (child.geometry) {
+          child.geometry.dispose()
+        }
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach(material => material.dispose())
+          } else {
+            child.material.dispose()
+          }
+        }
+      }
+    })
+  }
+
+  /**
+   * Safely dispose and remove a debug line
+   */
+  private disposeDebugLine(line: Line | null): Line | null {
+    if (line) {
+      if (line.geometry) {
+        line.geometry.dispose()
+      }
+      if (line.material) {
+        if (Array.isArray(line.material)) {
+          line.material.forEach(material => material.dispose())
+        } else {
+          line.material.dispose()
+        }
+      }
+      this.debugObjects.remove(line)
+    }
+    return null
+  }
+
+  /**
+   * Update line geometry safely, disposing old geometry when needed
+   */
+  private updateLineGeometry(line: Line, points: Vector3[]) {
+    // Dispose of the old geometry
+    if (line.geometry) {
+      line.geometry.dispose()
+    }
+    // Create new geometry
+    line.geometry = new BufferGeometry().setFromPoints(points)
+  }
+
+  /**
+   * Dispose of all resources when the JointControls instance is no longer needed
+   */
+  override dispose() {
+    // Remove event listeners
+    this.domElement.removeEventListener('mousedown', this.onMouseDown.bind(this))
+    this.domElement.removeEventListener('mousemove', this.onMouseMove.bind(this))
+    this.domElement.removeEventListener('mouseup', this.onMouseUp.bind(this))
+
+    // Clean up all debug objects and gizmos
+    this.clear()
+
+    // Dispose of gizmo materials and geometries
+    this.gizmoGroup.traverse((child) => {
+      if (child instanceof Mesh) {
+        if (child.geometry) {
+          child.geometry.dispose()
+        }
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach(material => material.dispose())
+          } else {
+            child.material.dispose()
+          }
+        }
+      }
+    })
+
+    // Call parent dispose
+    super.dispose()
   }
 }
