@@ -52,10 +52,11 @@
             </select>
           </div>
           <div>Rotation: <input type="number" :value="connStart.rotation"
+              @input="connStart.rotation = Number.parseFloat(($event.target as HTMLInputElement).value)"
               @change="updateConnection($event, selectedPipe.id, connStart.id, 'rotation')">
             <span v-if="connStart" style="margin-left: 10px; color: #666;">
               rel: {{ erector.getPipeJointRelationship(selectedPipe.id, connStart.jointId, connStart.holeId, 'start') ||
-              'none' }}
+                'none' }}
             </span>
           </div>
         </div>
@@ -78,10 +79,11 @@
             </select>
           </div>
           <div>Rotation: <input type="number" :value="connEnd.rotation"
+              @input="connEnd.rotation = Number.parseFloat(($event.target as HTMLInputElement).value)"
               @change="updateConnection($event, selectedPipe.id, connEnd.id, 'rotation')">
             <span v-if="connEnd" style="margin-left: 10px; color: #666;">
               rel: {{ erector.getPipeJointRelationship(selectedPipe.id, connEnd.jointId, connEnd.holeId, 'end') ||
-              'none' }}
+                'none' }}
             </span>
           </div>
         </div>
@@ -103,14 +105,17 @@
           </div>
           <div>Rotation:
             <input type="number" :value="conn.rotation"
+              @input="conn.rotation = Number.parseFloat(($event.target as HTMLInputElement).value)"
               @change="updateConnection($event, selectedPipe.id, conn.id, 'rotation')">
             <span style="margin-left: 10px; color: #666;">
               rel: {{ erector.getPipeJointRelationship(selectedPipe.id, conn.jointId, conn.holeId, 'midway') || 'none'
               }}
             </span>
           </div>
-          <div>Position: <input type="number" v-model="conn.position" min="0" max="1" step="0.01"> : {{
-            conn.position * selectedPipe.length * 1000 }}mm</div>
+          <div>Position: <input type="number" :value="conn.position" min="0" max="1" step="0.01"
+              @input="conn.position = Number.parseFloat(($event.target as HTMLInputElement).value)"
+              @change="updateConnection($event, selectedPipe.id, conn.id, 'position')"> : {{
+                conn.position * selectedPipe.length * 1000 }}mm</div>
         </div>
       </div>
       <div>
@@ -201,32 +206,26 @@ function removeObject(obj: ErectorPipe | ErectorJoint) {
 }
 
 function updateConnection(event: Event, pipeId: string, id: string, key: keyof ErectorPipeConnection) {
-  const target = event.target as HTMLSelectElement;
+  console.log(`Updating connection ${id} on pipe ${pipeId} with key ${key}`);
+  const target = event.target as HTMLSelectElement | HTMLInputElement;
   const value = target.value;
-  if (!value) return;
+  if (value === '') return;
 
-  const pipe = erector.pipes.find(p => p.id === pipeId);
-  if (!pipe) return;
+  //console.log(`connection: ${connection} toUpdate: ${JSON.stringify(connectionToUpdate)}`)
+  console.log(`Updating connection ${id} on pipe ${pipeId} with key ${key} and value ${value}`);
 
-  // 接続オブジェクトを取得
-  let connection: ErectorPipeConnection | undefined;
-
-  if (pipe.connections.start?.id === id) {
-    connection = pipe.connections.start;
-  } else if (pipe.connections.end?.id === id) {
-    connection = pipe.connections.end;
-  } else {
-    connection = pipe.connections.midway.find(c => c.id === id);
-  }
-
-  if (!connection) return;
+  // 更新オブジェクトを作成
+  const updateObj: Partial<ErectorPipeConnection> = {};
 
   // 値を適切に設定
   if (key === 'jointId' || key === 'id') {
-    connection[key] = value;
+    updateObj[key] = value;
   } else {
-    connection[key] = Number.parseFloat(value);
+    updateObj[key] = Number.parseFloat(value);
   }
+
+  // ErectorPipeJointストアのupdateConnectionメソッドを使用
+  erector.updateConnection(id, updateObj);
 }
 
 </script>
