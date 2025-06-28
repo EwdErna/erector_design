@@ -5,11 +5,11 @@
 </template>
 
 <script lang="ts" setup>
-import { AmbientLight, AxesHelper, DirectionalLight, GridHelper, PerspectiveCamera, Scene, WebGLRenderer, Color, Vector2, Raycaster, Quaternion, Vector3, Euler, Object3D } from 'three';
+import { AmbientLight, AxesHelper, DirectionalLight, GridHelper, PerspectiveCamera, Scene, WebGLRenderer, Color, Vector2, Raycaster, Quaternion, Vector3, Euler, Object3D, Mesh } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/Addons.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import type { ErectorPipe, ErectorPipeConnection } from '~/types/erector_component';
-import { JointControl } from '~/utils/Erector/JointControls';
+import type { ErectorPipe } from '~/types/erector_component';
+import { JointControls } from '~/utils/Erector/JointControls_2';
 
 const container = useTemplateRef("container")
 const objectSelection = useObjectSelection()
@@ -17,7 +17,7 @@ const three = useThree()
 let renderer: WebGLRenderer
 let camera: PerspectiveCamera
 let controls: OrbitControls
-let jointControls: JointControl
+let jointControls: JointControls
 let rootPipeId: string
 const erector = useErectorPipeJoint()
 const rootPipeObject: Ref<Object3D | undefined> = ref()
@@ -41,7 +41,7 @@ function selectObject(event: MouseEvent) {
     const jointObject = erector.joints.find(j => j.id === rootObject.name)
     const pipeObject = erector.pipes.find(p => p.id === rootObject.name)
     if (jointObject) {
-      jointControls.setSelectedJoint(jointObject, rootObject)
+      jointControls.setTarget(jointObject, rootObject as Mesh)
     }
     objectSelection.select(rootObject.name)
   }
@@ -119,11 +119,11 @@ const setupScene = () => {
   controls.maxDistance = 100
   controls.maxPolarAngle = Math.PI
 
-  jointControls = new JointControl(camera, renderer.domElement)
+  jointControls = new JointControls(camera, renderer.domElement)
   jointControls.addEventListener('dragging-changed', e => {
     controls.enabled = !e.value
   })
-  scene.add(jointControls.gizmos)
+  scene.add(jointControls.gizmoGroup)
   scene.add(jointControls.debugObjects)
 
   const gridHelper = new GridHelper(10, 10)
@@ -155,7 +155,8 @@ const animate = (scene: Scene) => {
       rootPipeId = erector.instances[0].id
       rootPipeObject.value = erector.instances.find(i => i.id === rootPipeId)?.obj
     }
-  } if (rootPipeObject.value) {
+  }
+  if (rootPipeObject.value) {
     erector.worldPosition({
       id: rootPipeId, position: rootPipeObject.value?.position.clone() ?? new Vector3(), rotation: new Quaternion().setFromEuler(rootPipeObject.value?.rotation ?? new Euler(0, 0, 0))
     })
@@ -163,7 +164,6 @@ const animate = (scene: Scene) => {
 
   // OrbitControlsの更新
   controls.update()
-  jointControls.updateGizmosTransform()
 
   requestAnimationFrame(() => animate(scene))
   renderer.render(scene, camera)
