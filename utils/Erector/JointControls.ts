@@ -1,6 +1,6 @@
 import { BufferGeometry, Camera, Controls, Euler, Group, Line, Mesh, MeshBasicMaterial, Plane, Quaternion, Raycaster, SphereGeometry, TorusGeometry, Vector2, Vector3 } from "three";
 import { definitions } from "@/utils/Erector/erectorComponentDefinition";
-import type { ErectorJoint, ErectorPipeConnection } from "~/types/erector_component";
+import type { ErectorJoint, ErectorPipeConnection, ErectorPipe } from "~/types/erector_component";
 import { radiansToDegrees } from "~/utils/angleUtils";
 
 /**
@@ -10,6 +10,77 @@ function isMeshWithBasicMaterial(obj: any): obj is Mesh<BufferGeometry, MeshBasi
   return obj instanceof Mesh &&
     obj.material instanceof MeshBasicMaterial &&
     !Array.isArray(obj.material);
+}
+
+/**
+ * Coordinate system manager for joint controls
+ * Clearly separates different coordinate systems and their transformations
+ */
+class CoordinateManager {
+  constructor(
+    private jointObject: Mesh,  // The joint object in world space
+    private gizmoGroup: Group   // The gizmo group (joint local space)
+  ) { }
+
+  /**
+   * Convert a direction from joint local space to world space
+   */
+  jointLocalToWorldDirection(localDirection: Vector3): Vector3 {
+    return localDirection.clone().applyQuaternion(this.jointObject.quaternion).normalize();
+  }
+
+  /**
+   * Convert a position from gizmo local space to world space
+   */
+  gizmoLocalToWorld(localPosition: Vector3): Vector3 {
+    return this.gizmoGroup.localToWorld(localPosition.clone());
+  }
+
+  /**
+   * Convert a world position to relative position from gizmo
+   */
+  worldToGizmoRelative(worldPosition: Vector3, gizmoLocalPosition: Vector3): Vector3 {
+    return worldPosition.clone().sub(this.gizmoLocalToWorld(gizmoLocalPosition));
+  }
+}
+
+/**
+ * Rotation angle calculator
+ * Handles the complex angle calculation logic separately
+ */
+class RotationCalculator {
+  /**
+   * Calculate rotation angle between two vectors around a normal
+   * Uses scalar triple product to get signed angle
+   * @param startVector - Starting position vector (relative to rotation center)
+   * @param currentVector - Current position vector (relative to rotation center)
+   * @param normal - Rotation axis normal in world space
+   * @returns Signed rotation angle in radians
+   */
+  static calculateSignedAngle(startVector: Vector3, currentVector: Vector3, normal: Vector3): number {
+    // Scalar triple product: normal · (start × current)
+    // This gives us |start||current|sin(θ) with correct sign
+    const crossProduct = startVector.clone().cross(currentVector);
+    const sinTheta = normal.clone().dot(crossProduct);
+
+    // Dot product gives us |start||current|cos(θ)
+    const cosTheta = startVector.clone().dot(currentVector);
+
+    // atan2 handles the sign correctly and gives us the full range [-π, π]
+    return Math.atan2(sinTheta, cosTheta);
+  }
+
+  /**
+   * Apply relationship-based rotation direction
+   * @param angle - Base angle in radians
+   * @param relationshipType - Type of pipe-joint relationship
+   * @returns Adjusted angle considering relationship direction
+   */
+  static applyRelationshipDirection(angle: number, relationshipType: 'j2p' | 'p2j' | null): number {
+    // For p2j relationships, reverse the rotation direction
+    const multiplier = relationshipType === 'p2j' ? -1 : 1;
+    return angle * multiplier;
+  }
 }
 
 export class JointControls extends Controls<{ change: { value: boolean }, 'dragging-changed': { value: boolean } }> {
@@ -29,6 +100,10 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
   dragCurrent: Vector3 | null = null;
   draggingLine: Line | null = null;
   currentAngle: number = 0;
+
+  // Coordinate and calculation helpers
+  private coordinateManager: CoordinateManager | null = null;
+
   constructor(camera: Camera, domElement: HTMLElement) {
     super(camera, domElement);
     this.camera = camera
@@ -38,9 +113,11 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
     domElement.addEventListener('mousemove', this.onMouseMove.bind(this))
     domElement.addEventListener('mouseup', this.onMouseUp.bind(this))
   }
+
   setTarget(joint: ErectorJoint, object: Mesh) {
     this.clear()
     this.target = { joint, object }
+    this.coordinateManager = new CoordinateManager(object, this.gizmoGroup);
     this.createGizmo()
     this.dispatchEvent({ type: 'change', value: true });
   }
@@ -113,6 +190,7 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
     this.gizmos.forEach(g => g.clear())
     this.gizmos = []
     this.target = null
+    this.coordinateManager = null
     this.isDragging = false
     this.dragging = null
     this.draggingPlane = null
@@ -123,136 +201,167 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
   }
 
   onMouseDown(event: MouseEvent) {
-    if (!this.target) return;
+    if (!this.target || !this.coordinateManager) return;
+
+    const intersectedGizmo = this.getIntersectedGizmo(event);
+    if (!intersectedGizmo) return;
+
+    this.startDragging(intersectedGizmo.object, intersectedGizmo.point);
+  }
+
+  /**
+   * Get the intersected gizmo from mouse event
+   */
+  private getIntersectedGizmo(event: MouseEvent): { object: Mesh<BufferGeometry, MeshBasicMaterial>, point: Vector3 } | null {
     const rect = this.domElement.getBoundingClientRect();
     const mouseX = (event.clientX - rect.left) / rect.width * 2 - 1;
     const mouseY = -(event.clientY - rect.top) / rect.height * 2 + 1;
 
-    // マウス位置からraycasterを作成
     const raycaster = new Raycaster();
     raycaster.setFromCamera(new Vector2(mouseX, mouseY), this.camera);
 
-    // gizmoGroup内のオブジェクトと交差するかチェック
     const intersects = raycaster.intersectObjects(this.gizmoGroup.children);
-    if (intersects.length > 0) {
-      if (!this.isDragging) {
-        this.isDragging = true;
-        this.domElement.style.cursor = 'grabbing';
-        this.dispatchEvent({ type: 'dragging-changed', value: true });
-      }
-      const intersectedObject = intersects[0].object;
-      // Type guard to ensure the object is a Mesh with MeshBasicMaterial
-      if (isMeshWithBasicMaterial(intersectedObject)) {
-        this.dragging = intersectedObject;
-        intersectedObject.material.opacity = 0.8;
-      } else {
-        console.warn('Intersected object is not a Mesh with MeshBasicMaterial');
-        return;
-      }
+    if (intersects.length === 0) return null;
 
-      const clickSphere = new Mesh(new SphereGeometry(0.01, 16, 16))
-      clickSphere.name = `${this.dragging.name}-click-sphere`
-      clickSphere.position.copy(intersects[0].point)
-      this.debugObjects.add(clickSphere)
-      const draggingPlaneNormal = new Vector3().fromArray(this.dragging.userData.normal).applyQuaternion(this.target.object.quaternion).normalize();
-      // const normalLineGeometry = new BufferGeometry().setFromPoints([this.target.object.position, this.target.object.position.clone().add(draggingPlaneNormal)]);
-      // this.normalLine = new Line(normalLineGeometry, new MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.5 }));
-      // this.debugObjects.add(this.normalLine);
-      this.dragStart = intersects[0].point.clone().sub(this.gizmoGroup.localToWorld(this.dragging.position.clone()));
-
-      // Dispose existing dragStartLine if it exists
-      this.dragStartLine = this.disposeDebugLine(this.dragStartLine)
-
-      const dragStartLineGeometry = new BufferGeometry().setFromPoints([this.gizmoGroup.localToWorld(this.dragging.position.clone()), intersects[0].point]);
-      this.dragStartLine = new Line(dragStartLineGeometry, new MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.5 }));
-      this.debugObjects.add(this.dragStartLine);
-      this.draggingPlane = new Plane().setFromNormalAndCoplanarPoint(draggingPlaneNormal, this.dragging.localToWorld(new Vector3(0, 0, 0)));
-      this.dragStartAngle = this.dragging.userData.rotation;
-      this.dispatchEvent({ type: 'change', value: true });
+    const intersectedObject = intersects[0].object;
+    if (!isMeshWithBasicMaterial(intersectedObject)) {
+      console.warn('Intersected object is not a Mesh with MeshBasicMaterial');
+      return null;
     }
+
+    return { object: intersectedObject, point: intersects[0].point };
+  }
+
+  /**
+   * Start dragging operation with clear coordinate system management
+   */
+  private startDragging(gizmo: Mesh<BufferGeometry, MeshBasicMaterial>, intersectionPoint: Vector3) {
+    if (!this.target || !this.coordinateManager) return;
+
+    // Set dragging state
+    this.isDragging = true;
+    this.domElement.style.cursor = 'grabbing';
+    this.dispatchEvent({ type: 'dragging-changed', value: true });
+
+    this.dragging = gizmo;
+    gizmo.material.opacity = 0.8;
+
+    // Create debug sphere at intersection point
+    this.createDebugSphere(gizmo, intersectionPoint);
+
+    // Setup coordinate system for rotation calculation
+    this.setupDraggingCoordinates(gizmo, intersectionPoint);
+
+    this.dragStartAngle = gizmo.userData.rotation;
+    this.dispatchEvent({ type: 'change', value: true });
+  }
+
+  /**
+   * Setup coordinates and plane for dragging operation
+   */
+  private setupDraggingCoordinates(gizmo: Mesh<BufferGeometry, MeshBasicMaterial>, intersectionPoint: Vector3) {
+    if (!this.target || !this.coordinateManager) return;
+
+    // Get normal vector in world space (joint local -> world)
+    const gizmoLocalNormal = new Vector3().fromArray(gizmo.userData.normal);
+    const worldNormal = this.coordinateManager.jointLocalToWorldDirection(gizmoLocalNormal);
+
+    // Calculate drag start vector (world intersection -> gizmo world position)
+    this.dragStart = this.coordinateManager.worldToGizmoRelative(intersectionPoint, gizmo.position);
+
+    // Create dragging plane (perpendicular to normal, passing through gizmo)
+    const gizmoWorldPosition = this.coordinateManager.gizmoLocalToWorld(gizmo.position);
+    this.draggingPlane = new Plane().setFromNormalAndCoplanarPoint(worldNormal, gizmoWorldPosition);
+
+    // Create debug line
+    this.createDebugLine(gizmoWorldPosition, intersectionPoint);
   }
   onMouseMove(event: MouseEvent) {
-    if (!this.target || !this.isDragging || !this.dragging || !this.draggingPlane) return;
+    if (!this.target || !this.isDragging || !this.dragging || !this.draggingPlane || !this.coordinateManager) return;
+
+    const currentIntersection = this.getCurrentMouseIntersection(event);
+    if (!currentIntersection) return;
+
+    this.updateDebugVisualization(currentIntersection);
+
+    const rotationAngle = this.calculateCurrentRotation(currentIntersection);
+    this.applyRotationToConnection(rotationAngle);
+
+    this.dispatchEvent({ type: 'change', value: true });
+    this.gizmoGroup.rotation.setFromQuaternion(this.target.object.quaternion);
+  }
+
+  /**
+   * Get current mouse intersection with dragging plane
+   */
+  private getCurrentMouseIntersection(event: MouseEvent): Vector3 | null {
+    if (!this.draggingPlane) return null;
+
     const rect = this.domElement.getBoundingClientRect();
     const mouseX = (event.clientX - rect.left) / rect.width * 2 - 1;
     const mouseY = -(event.clientY - rect.top) / rect.height * 2 + 1;
 
-    // マウス位置からraycasterを作成
     const raycaster = new Raycaster();
     raycaster.setFromCamera(new Vector2(mouseX, mouseY), this.camera);
-    let intersection = new Vector3();
-    raycaster.ray.intersectPlane(this.draggingPlane, intersection);
+
+    const intersection = new Vector3();
+    const success = raycaster.ray.intersectPlane(this.draggingPlane, intersection);
+
+    return success ? intersection : null;
+  }
+
+  /**
+   * Calculate current rotation angle using clear coordinate system logic
+   */
+  private calculateCurrentRotation(currentIntersection: Vector3): number {
+    if (!this.dragging || !this.dragStart || !this.coordinateManager || !this.target) return 0;
+
+    // Convert current intersection to relative position (same coordinate system as dragStart)
+    this.dragCurrent = this.coordinateManager.worldToGizmoRelative(currentIntersection, this.dragging.position);
+
+    // Get world normal for rotation axis
+    const gizmoLocalNormal = new Vector3().fromArray(this.dragging.userData.normal);
+    const worldNormal = this.coordinateManager.jointLocalToWorldDirection(gizmoLocalNormal);
+
+    // Calculate angle using our dedicated rotation calculator
+    const baseAngle = RotationCalculator.calculateSignedAngle(
+      this.dragStart,     // Start vector (relative to gizmo)
+      this.dragCurrent,   // Current vector (relative to gizmo)  
+      worldNormal         // Rotation axis (world space)
+    );
+
+    // Apply relationship direction (for pipe-joint interaction)
+    const relationshipType = this.getPipeJointRelationshipType();
+    const adjustedAngle = RotationCalculator.applyRelationshipDirection(baseAngle, relationshipType);
+
+    return this.dragStartAngle + radiansToDegrees(adjustedAngle);
+  }
+
+  /**
+   * Update debug visualization during drag
+   */
+  private updateDebugVisualization(currentIntersection: Vector3) {
+    if (!this.dragging || !this.coordinateManager) return;
+
+    // Update click sphere position
     const clickSphere = this.debugObjects.getObjectByName(`${this.dragging.name}-click-sphere`);
     if (clickSphere) {
-      clickSphere.position.copy(intersection);
+      clickSphere.position.copy(currentIntersection);
     }
-    this.dragCurrent = intersection.clone().sub(this.gizmoGroup.localToWorld(this.dragging.position.clone()));
+
+    // Update dragging line
+    const gizmoWorldPosition = this.coordinateManager.gizmoLocalToWorld(this.dragging.position);
     if (!this.draggingLine) {
-      const draggingLineGeometry = new BufferGeometry().setFromPoints([this.gizmoGroup.localToWorld(this.dragging.position.clone()), intersection]);
-      this.draggingLine = new Line(draggingLineGeometry, new MeshBasicMaterial({ color: 0x0000ff, transparent: true, opacity: 0.5 }));
+      const geometry = new BufferGeometry().setFromPoints([gizmoWorldPosition, currentIntersection]);
+      this.draggingLine = new Line(geometry, new MeshBasicMaterial({
+        color: 0x0000ff,
+        transparent: true,
+        opacity: 0.5
+      }));
       this.debugObjects.add(this.draggingLine);
-    }
-    else {
-      // Safely update the line geometry, disposing the old one
-      this.updateLineGeometry(this.draggingLine, [this.gizmoGroup.localToWorld(this.dragging.position.clone()), intersection]);
-    }
-    const normal = new Vector3().fromArray(this.dragging.userData.normal).applyQuaternion(this.target.object.quaternion).normalize();
-    const a = this.dragStart?.clone() ?? new Vector3(0, 0, 0);
-    const b = this.dragCurrent?.clone() ?? new Vector3(0, 0, 0);
-    const angle = Math.atan2(normal.clone().dot(a.clone().cross(b)), a.clone().dot(b));
-    const dragging = this.dragging;
-    const connections = useErectorPipeJoint()
-    const targetPipe = connections.pipes.find(p => {
-      if (p.connections.start && p.connections.start.jointId === this.target?.joint.id && p.connections.start.holeId === dragging.userData.index) return true;
-      if (p.connections.end && p.connections.end.jointId === this.target?.joint.id && p.connections.end.holeId === dragging.userData.index) return true;
-      return p.connections.midway.some(m => m.jointId === this.target?.joint.id && m.holeId === dragging.userData.index);
-    })
-    let targetConnection: undefined | ErectorPipeConnection = undefined
-    if (targetPipe) {
-      if (targetPipe.connections.start && targetPipe.connections.start.jointId === this.target?.joint.id && targetPipe.connections.start.holeId === dragging.userData.index) {
-        targetConnection = targetPipe.connections.start;
-      }
-      else if (targetPipe.connections.end && targetPipe.connections.end.jointId === this.target?.joint.id && targetPipe.connections.end.holeId === dragging.userData.index) {
-        targetConnection = targetPipe.connections.end;
-      }
-      else {
-        const midway = targetPipe.connections.midway.find(m => m.jointId === this.target?.joint.id && m.holeId === dragging.userData.index);
-        if (midway) {
-          targetConnection = midway;
-        }
-      }
-    }
-    if (targetConnection) {
-      // Check the pipe-joint relationship to determine rotation direction
-      let connectionType: 'start' | 'end' | 'midway' = 'start'
-      if (targetPipe?.connections.start?.id === targetConnection.id) {
-        connectionType = 'start'
-      } else if (targetPipe?.connections.end?.id === targetConnection.id) {
-        connectionType = 'end'
-      } else {
-        connectionType = 'midway'
-      }
-
-      const relationshipType = connections.getPipeJointRelationship(
-        targetPipe!.id,
-        this.target!.joint.id,
-        dragging.userData.index,
-        connectionType
-      )
-
-      // Reverse rotation direction for p2j relationships
-      const rotationMultiplier = relationshipType === 'p2j' ? -1 : 1
-      const adjustedAngle = angle * rotationMultiplier
-
-      connections.updateConnection(targetConnection.id, { rotation: this.dragStartAngle + radiansToDegrees(adjustedAngle) });
-      this.currentAngle = this.dragStartAngle + radiansToDegrees(adjustedAngle);
     } else {
-      // Fallback if no connection found
-      this.currentAngle = this.dragStartAngle + radiansToDegrees(angle);
+      this.updateLineGeometry(this.draggingLine, [gizmoWorldPosition, currentIntersection]);
     }
-
-    this.dispatchEvent({ type: 'change', value: true });
-    this.gizmoGroup.rotation.setFromQuaternion(this.target.object.quaternion)
   }
   onMouseUp(event: MouseEvent) {
     if (this.isDragging) {
@@ -344,6 +453,32 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
   }
 
   /**
+   * Create debug line
+   */
+  private createDebugLine(startPoint: Vector3, endPoint: Vector3) {
+    // Dispose existing line
+    this.dragStartLine = this.disposeDebugLine(this.dragStartLine);
+
+    const geometry = new BufferGeometry().setFromPoints([startPoint, endPoint]);
+    this.dragStartLine = new Line(geometry, new MeshBasicMaterial({
+      color: 0x00ff00,
+      transparent: true,
+      opacity: 0.5
+    }));
+    this.debugObjects.add(this.dragStartLine);
+  }
+
+  /**
+   * Create debug sphere at intersection point
+   */
+  private createDebugSphere(gizmo: Mesh<BufferGeometry, MeshBasicMaterial>, intersectionPoint: Vector3) {
+    const clickSphere = new Mesh(new SphereGeometry(0.01, 16, 16));
+    clickSphere.name = `${gizmo.name}-click-sphere`;
+    clickSphere.position.copy(intersectionPoint);
+    this.debugObjects.add(clickSphere);
+  }
+
+  /**
    * Dispose of all resources when the JointControls instance is no longer needed
    */
   override dispose() {
@@ -373,5 +508,97 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
 
     // Call parent dispose
     super.dispose()
+  }
+
+  /**
+   * Apply calculated rotation to the connection
+   */
+  private applyRotationToConnection(rotationAngle: number) {
+    if (!this.dragging) return;
+
+    const connection = this.findTargetConnection();
+    if (connection.targetConnection) {
+      const connections = useErectorPipeJoint();
+      connections.updateConnection(connection.targetConnection.id, { rotation: rotationAngle });
+    }
+
+    this.currentAngle = rotationAngle;
+  }
+
+  /**
+   * Get pipe-joint relationship type for current dragging gizmo
+   */
+  private getPipeJointRelationshipType(): 'j2p' | 'p2j' | null {
+    if (!this.dragging || !this.target) return null;
+
+    const connection = this.findTargetConnection();
+    if (!connection.targetPipe || !connection.targetConnection) return null;
+
+    const connections = useErectorPipeJoint();
+    return connections.getPipeJointRelationship(
+      connection.targetPipe.id,
+      this.target.joint.id,
+      this.dragging.userData.index,
+      connection.connectionType
+    );
+  }
+
+  /**
+   * Find target pipe and connection for current dragging gizmo
+   * Extracted to reduce code duplication
+   */
+  private findTargetConnection(): {
+    targetPipe?: ErectorPipe,
+    targetConnection?: ErectorPipeConnection,
+    connectionType: 'start' | 'end' | 'midway'
+  } {
+    if (!this.dragging || !this.target) {
+      return { connectionType: 'start' };
+    }
+
+    const connections = useErectorPipeJoint();
+    const dragging = this.dragging;
+
+    // Find the pipe connected to this gizmo
+    const targetPipe = connections.pipes.find(p => {
+      if (p.connections.start && p.connections.start.jointId === this.target?.joint.id && p.connections.start.holeId === dragging.userData.index) return true;
+      if (p.connections.end && p.connections.end.jointId === this.target?.joint.id && p.connections.end.holeId === dragging.userData.index) return true;
+      return p.connections.midway.some(m => m.jointId === this.target?.joint.id && m.holeId === dragging.userData.index);
+    });
+
+    if (!targetPipe) {
+      return { connectionType: 'start' };
+    }
+
+    // Find the specific connection
+    if (targetPipe.connections.start && targetPipe.connections.start.jointId === this.target.joint.id && targetPipe.connections.start.holeId === dragging.userData.index) {
+      return {
+        targetPipe,
+        targetConnection: targetPipe.connections.start,
+        connectionType: 'start'
+      };
+    }
+
+    if (targetPipe.connections.end && targetPipe.connections.end.jointId === this.target.joint.id && targetPipe.connections.end.holeId === dragging.userData.index) {
+      return {
+        targetPipe,
+        targetConnection: targetPipe.connections.end,
+        connectionType: 'end'
+      };
+    }
+
+    const midwayConnection = targetPipe.connections.midway.find(m =>
+      m.jointId === this.target?.joint.id && m.holeId === dragging.userData.index
+    );
+
+    if (midwayConnection) {
+      return {
+        targetPipe,
+        targetConnection: midwayConnection,
+        connectionType: 'midway'
+      };
+    }
+
+    return { connectionType: 'start' };
   }
 }
