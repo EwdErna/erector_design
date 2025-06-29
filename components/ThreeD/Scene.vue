@@ -10,7 +10,7 @@ import { GLTFLoader } from 'three/examples/jsm/Addons.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { ErectorPipe } from '~/types/erector_component';
 import { JointControls } from '~/utils/Erector/JointControls';
-import { PipeControls } from '~/utils/Erector/PipeControls';
+import { UnifiedPipeControls } from '~/utils/Erector/PipeControls';
 import { degreesToRadians } from '~/utils/angleUtils';
 
 const container = useTemplateRef("container")
@@ -20,7 +20,7 @@ let renderer: WebGLRenderer
 let camera: PerspectiveCamera
 let controls: OrbitControls
 let jointControls: JointControls
-let pipeControls: PipeControls
+let unifiedPipeControls: UnifiedPipeControls
 let rootPipeId: string
 const erector = useErectorPipeJoint()
 const rootPipeObject: Ref<Object3D | undefined> = ref()
@@ -45,14 +45,14 @@ function selectObject(event: MouseEvent) {
     const pipeObject = erector.pipes.find(p => p.id === rootObject.name)
     if (jointObject) {
       jointControls.setTarget(jointObject, rootObject as Mesh)
-      pipeControls.clear()
+      unifiedPipeControls.clear()
     } else if (pipeObject) {
-      pipeControls.setTarget(pipeObject, rootObject as Mesh)
+      unifiedPipeControls.setTarget(pipeObject, rootObject as Mesh)
       jointControls.clear()
     } else {
-      // Clear both controls if not selecting a joint or pipe
+      // Clear all controls if not selecting a joint or pipe
       jointControls.clear()
-      pipeControls.clear()
+      unifiedPipeControls.clear()
     }
     objectSelection.select(rootObject.name)
   }
@@ -137,12 +137,12 @@ const setupScene = () => {
   scene.add(jointControls.gizmoGroup)
   scene.add(jointControls.debugObjects)
 
-  pipeControls = new PipeControls(camera, renderer.domElement)
-  pipeControls.addEventListener('dragging-changed', e => {
+  unifiedPipeControls = new UnifiedPipeControls(camera, renderer.domElement)
+  unifiedPipeControls.addEventListener('dragging-changed', e => {
     controls.enabled = !e.value
   })
-  scene.add(pipeControls.gizmoGroup)
-  scene.add(pipeControls.debugObjects)
+  scene.add(unifiedPipeControls.controlGroup)
+  scene.add(unifiedPipeControls.debugObjects)
 
   const gridHelper = new GridHelper(10, 10)
   scene.add(gridHelper)
@@ -192,7 +192,7 @@ const animate = (scene: Scene) => {
 watch(() => objectSelection.object, (newSelection) => {
   if (!newSelection || newSelection === '') {
     jointControls?.clear()
-    pipeControls?.clear()
+    unifiedPipeControls?.clear()
   }
 })
 
@@ -212,7 +212,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
   if (jointControls) jointControls.dispose()
-  if (pipeControls) pipeControls.dispose()
+  if (unifiedPipeControls) unifiedPipeControls.dispose()
   if (controls) controls.dispose()
   if (renderer) renderer.dispose()
 })
