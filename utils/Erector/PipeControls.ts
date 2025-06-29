@@ -1,4 +1,4 @@
-import { BufferGeometry, Camera, Controls, Group, Line, Mesh, MeshBasicMaterial, Plane, Raycaster, SphereGeometry, TorusGeometry, Vector2, Vector3, CylinderGeometry } from "three";
+import { BufferGeometry, Camera, Controls, Group, Line, Mesh, MeshBasicMaterial, Plane, Raycaster, SphereGeometry, TorusGeometry, Vector2, Vector3, CylinderGeometry, BoxGeometry } from "three";
 import type { ErectorPipe, ErectorPipeConnection, ErectorJoint } from "~/types/erector_component";
 import { radiansToDegrees } from "~/utils/angleUtils";
 
@@ -78,7 +78,7 @@ class ControlCalculators {
 /**
  * Gizmo type definitions
  */
-type GizmoType = 'pipe-length-control' | 'connection-rotation-control';
+type GizmoType = 'pipe-length-control' | 'connection-rotation-control' | 'connection-position-control';
 
 interface LengthGizmoData {
   type: 'pipe-length-control';
@@ -99,7 +99,18 @@ interface ConnectionGizmoData {
   rotation: number;
 }
 
-type GizmoData = LengthGizmoData | ConnectionGizmoData;
+interface PositionGizmoData {
+  type: 'connection-position-control';
+  connectionId: string;
+  connectionType: 'midway';
+  jointId: string;
+  holeId: number;
+  joint: ErectorJoint;
+  connection: ErectorPipeConnection;
+  position: number; // [0,1] range
+}
+
+type GizmoData = LengthGizmoData | ConnectionGizmoData | PositionGizmoData;
 
 export class PipeControls extends Controls<{ change: { value: boolean }, 'dragging-changed': { value: boolean } }> {
   controlGroup: Group = new Group()
@@ -112,7 +123,7 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
   draggingPlane: Plane | null = null
   debugObjects: Group = new Group()
   dragStart: Vector3 | null = null
-  dragStartValue: number = 0 // Can be length or angle depending on gizmo type
+  dragStartValue: number = 0 // Can be length, angle, or position depending on gizmo type
   currentValue: number = 0
 
   private coordinateManager: CoordinateManager | null = null
@@ -267,6 +278,55 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
 
     this.controlGroup.add(gizmoMesh)
     this.gizmos.push(gizmoMesh)
+
+    // Create position control gizmo for midway connections
+    if (connectionType === 'midway') {
+      this.createPositionGizmo(connectionId, connection, joint, position)
+    }
+  }
+
+  private createPositionGizmo(
+    connectionId: string,
+    connection: ErectorPipeConnection,
+    joint: ErectorJoint,
+    jointPosition: Vector3
+  ) {
+    if (!this.target) return;
+
+    // Create a thin box gizmo offset in the X direction from the joint
+    const positionGizmo = new Mesh(
+      new BoxGeometry(0.01, 0.01, this.target.pipe.length), // Full pipe length
+      new MeshBasicMaterial({
+        color: 0x00ffff, // Cyan color for position control
+        transparent: true,
+        opacity: 0.5
+      })
+    )
+
+    // Position the gizmo offset from the joint in X direction
+    positionGizmo.position.copy(jointPosition)
+    positionGizmo.position.x += 0.04 // Offset in local X direction
+
+    // Center the box in the pipe's length
+    positionGizmo.position.z = this.target.pipe.length / 2
+
+    positionGizmo.name = `${connectionId}-position-control`
+
+    const positionData: PositionGizmoData = {
+      type: 'connection-position-control',
+      connectionId,
+      connectionType: 'midway',
+      jointId: joint.id,
+      holeId: connection.holeId,
+      joint,
+      connection,
+      position: connection.position || 0.5
+    }
+
+    positionGizmo.userData = positionData
+
+    this.controlGroup.add(positionGizmo)
+    this.gizmos.push(positionGizmo)
   }
 
   private getConnectionColor(connectionType: 'start' | 'end' | 'midway'): number {
@@ -340,6 +400,8 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
       this.setupLengthDragging(gizmo, intersectionPoint, gizmoData);
     } else if (gizmoData.type === 'connection-rotation-control') {
       this.setupRotationDragging(gizmo, intersectionPoint, gizmoData);
+    } else if (gizmoData.type === 'connection-position-control') {
+      this.setupPositionDragging(gizmo, intersectionPoint, gizmoData);
     }
 
     this.dispatchEvent({ type: 'change', value: true });
@@ -375,6 +437,21 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
     this.createDebugLine(gizmoWorldPosition, intersectionPoint);
   }
 
+  private setupPositionDragging(gizmo: Mesh<BufferGeometry, MeshBasicMaterial>, intersectionPoint: Vector3, data: PositionGizmoData) {
+    if (!this.target || !this.coordinateManager) return;
+
+    this.dragStart = intersectionPoint.clone();
+    this.dragStartValue = data.position;
+
+    // Create dragging plane with normal in local Y-axis direction (same as length control)
+    const localYNormal = new Vector3(0, 1, 0);
+    const worldYNormal = this.coordinateManager.pipeLocalToWorldDirection(localYNormal);
+    const gizmoWorldPosition = this.coordinateManager.controlLocalToWorld(gizmo.position);
+    this.draggingPlane = new Plane().setFromNormalAndCoplanarPoint(worldYNormal, gizmoWorldPosition);
+
+    this.createDebugLine(gizmoWorldPosition, intersectionPoint);
+  }
+
   onMouseMove(event: MouseEvent) {
     if (!this.target || !this.isDragging || !this.dragging || !this.draggingPlane || !this.coordinateManager) return;
 
@@ -388,6 +465,8 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
       this.handleLengthDrag(currentIntersection, gizmoData);
     } else if (gizmoData.type === 'connection-rotation-control') {
       this.handleRotationDrag(currentIntersection, gizmoData);
+    } else if (gizmoData.type === 'connection-position-control') {
+      this.handlePositionDrag(currentIntersection, gizmoData);
     }
 
     this.dispatchEvent({ type: 'change', value: true });
@@ -428,6 +507,21 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
 
     const newRotation = this.dragStartValue + radiansToDegrees(adjustedAngle);
     this.applyRotationToConnection(newRotation, data);
+  }
+
+  private handlePositionDrag(currentIntersection: Vector3, data: PositionGizmoData) {
+    if (!this.target || !this.dragStart || !this.coordinateManager) return;
+
+    // Convert current intersection to pipe's local space
+    const pipeWorldToLocal = this.target.object.worldToLocal.bind(this.target.object);
+    const currentLocalPos = pipeWorldToLocal(currentIntersection.clone());
+
+    // Calculate position as ratio from start (0) to end (1) of the pipe
+    // Clamp the Z position to pipe bounds [0, pipe.length]
+    const clampedZ = Math.max(0, Math.min(this.target.pipe.length, currentLocalPos.z));
+    const newPosition = clampedZ / this.target.pipe.length;
+
+    this.applyPositionToConnection(newPosition, data);
   }
 
   private getCurrentMouseIntersection(event: MouseEvent): Vector3 | null {
@@ -508,6 +602,33 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
         if (connectionData.connectionType === 'end') {
           gizmo.position.setZ(newLength);
         }
+      } else if (data.type === 'connection-position-control') {
+        // Update position control gizmo length to match pipe length
+        const positionData = data as PositionGizmoData;
+        if (gizmo.geometry instanceof BoxGeometry) {
+          gizmo.geometry.dispose();
+          gizmo.geometry = new BoxGeometry(0.01, 0.01, newLength); // Full pipe length
+        }
+        gizmo.position.z = newLength / 2;
+      }
+    });
+  }
+
+  private updateConnectionGizmoPositions(data: PositionGizmoData, newPosition: number) {
+    if (!this.target) return;
+
+    const absolutePosition = newPosition * this.target.pipe.length;
+
+    // Update both the position gizmo and rotation gizmo for this connection
+    this.gizmos.forEach(gizmo => {
+      const gizmoData = gizmo.userData as GizmoData;
+
+      // Update the rotation gizmo position
+      if (gizmoData.type === 'connection-rotation-control') {
+        const rotationData = gizmoData as ConnectionGizmoData;
+        if (rotationData.connectionId === data.connectionId) {
+          gizmo.position.setZ(absolutePosition);
+        }
       }
     });
   }
@@ -516,6 +637,17 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
     const connections = useErectorPipeJoint();
     connections.updateConnection(data.connection.id, { rotation: rotationAngle });
     this.currentValue = rotationAngle;
+  }
+
+  private applyPositionToConnection(position: number, data: PositionGizmoData) {
+    if (!this.target) return;
+
+    const connections = useErectorPipeJoint();
+    connections.updateConnection(data.connection.id, { position });
+    this.currentValue = position;
+
+    // Update the position gizmo and associated connection gizmo positions
+    this.updateConnectionGizmoPositions(data, position);
   }
 
   private getPipeJointRelationshipType(data: ConnectionGizmoData): 'j2p' | 'p2j' | null {
