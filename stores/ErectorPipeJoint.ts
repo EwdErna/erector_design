@@ -679,7 +679,56 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
           update(updated, pipe, updatedTransform, updatePipeJointRelationshipMethod)
         }
       }
-    }
+    },
+    removeJoint(jointId: string) {
+      // 削除対象のジョイントを使用している全てのコネクションを収集して削除
+      const connectionsToRemove: string[] = [];
+
+      this.pipes.forEach(pipe => {
+        // start connection
+        if (pipe.connections.start?.jointId === jointId) {
+          connectionsToRemove.push(pipe.connections.start.id);
+        }
+
+        // end connection
+        if (pipe.connections.end?.jointId === jointId) {
+          connectionsToRemove.push(pipe.connections.end.id);
+        }
+
+        // midway connections
+        pipe.connections.midway.forEach(conn => {
+          if (conn.jointId === jointId) {
+            connectionsToRemove.push(conn.id);
+          }
+        });
+      });
+
+      // 収集したコネクションを削除
+      connectionsToRemove.forEach(connectionId => {
+        this.removeConnection(connectionId);
+      });
+
+      // ジョイントを配列から削除
+      const jointIndex = this.joints.findIndex(j => j.id === jointId);
+      if (jointIndex !== -1) {
+        this.joints.splice(jointIndex, 1);
+      }
+
+      // 3Dオブジェクトのインスタンスを削除
+      const instanceIndex = this.instances.findIndex(i => i.id === jointId);
+      if (instanceIndex !== -1) {
+        const three = useThree();
+        if (three.scene) {
+          const instance = this.instances[instanceIndex];
+          if (instance.obj) {
+            three.scene.remove(instance.obj);
+          }
+        }
+        this.instances.splice(instanceIndex, 1);
+      }
+    },
+
+    // ...existing code...
   },
   getters: {
     invalidJoints() {

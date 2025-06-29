@@ -312,25 +312,35 @@ watch([connStart, connEnd, connMidway], () => {
 }, { immediate: true, deep: true })
 
 function removeObject(obj: ErectorPipe | ErectorJoint) {
-  // erector.pipesもしくはerector.jointsから削除
-  // もしerector.instancesに存在するなら、そちらも削除
   const id = obj.id;
-  const obj_idx = erector.instances.findIndex(i => i.id === id);
+
   if (isErectorPipe(obj)) {
-    erector.pipes.splice(erector.pipes.findIndex(p => p.id === id), 1);
-  } else {
-    erector.joints.splice(erector.joints.findIndex(j => j.id === id), 1);
-  }
-  if (obj_idx !== -1) {
-    const scene = useThree().scene
-    if (scene) {
-      const instance = erector.instances[obj_idx];
-      if (instance.obj) {
-        scene.remove(instance.obj);
-      }
-      erector.instances.splice(obj_idx, 1);
-      objectSelection.object = '';
+    // パイプの削除
+    const pipeIndex = erector.pipes.findIndex(p => p.id === id);
+    if (pipeIndex !== -1) {
+      erector.pipes.splice(pipeIndex, 1);
     }
+
+    // 3Dオブジェクトのインスタンスを削除
+    const instanceIndex = erector.instances.findIndex(i => i.id === id);
+    if (instanceIndex !== -1) {
+      const scene = useThree().scene;
+      if (scene) {
+        const instance = erector.instances[instanceIndex];
+        if (instance.obj) {
+          scene.remove(instance.obj);
+        }
+        erector.instances.splice(instanceIndex, 1);
+      }
+    }
+  } else {
+    // ジョイントの削除（関連するコネクションも含めて削除）
+    erector.removeJoint(id);
+  }
+
+  // 選択状態を解除（削除したオブジェクトが選択されていた場合）
+  if (objectSelection.object === id) {
+    objectSelection.object = '';
   }
 }
 
