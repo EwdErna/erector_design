@@ -10,7 +10,7 @@ import { GLTFLoader } from 'three/examples/jsm/Addons.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { ErectorPipe } from '~/types/erector_component';
 import { JointControls } from '~/utils/Erector/JointControls';
-import { UnifiedPipeControls } from '~/utils/Erector/PipeControls';
+import { PipeControls } from '~/utils/Erector/PipeControls';
 import { degreesToRadians } from '~/utils/angleUtils';
 
 const container = useTemplateRef("container")
@@ -20,7 +20,7 @@ let renderer: WebGLRenderer
 let camera: PerspectiveCamera
 let controls: OrbitControls
 let jointControls: JointControls
-let unifiedPipeControls: UnifiedPipeControls
+let unifiedPipeControls: PipeControls
 let rootPipeId: string
 const erector = useErectorPipeJoint()
 const rootPipeObject: Ref<Object3D | undefined> = ref()
@@ -137,7 +137,7 @@ const setupScene = () => {
   scene.add(jointControls.gizmoGroup)
   scene.add(jointControls.debugObjects)
 
-  unifiedPipeControls = new UnifiedPipeControls(camera, renderer.domElement)
+  unifiedPipeControls = new PipeControls(camera, renderer.domElement)
   unifiedPipeControls.addEventListener('dragging-changed', e => {
     controls.enabled = !e.value
   })

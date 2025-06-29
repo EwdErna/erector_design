@@ -12,9 +12,9 @@ function isMeshWithBasicMaterial(obj: any): obj is Mesh<BufferGeometry, MeshBasi
 }
 
 /**
- * Coordinate system manager for unified pipe controls
+ * Coordinate system manager for pipe controls
  */
-class UnifiedCoordinateManager {
+class CoordinateManager {
   constructor(
     private pipeObject: Mesh,
     private controlGroup: Group
@@ -101,7 +101,7 @@ interface ConnectionGizmoData {
 
 type GizmoData = LengthGizmoData | ConnectionGizmoData;
 
-export class UnifiedPipeControls extends Controls<{ change: { value: boolean }, 'dragging-changed': { value: boolean } }> {
+export class PipeControls extends Controls<{ change: { value: boolean }, 'dragging-changed': { value: boolean } }> {
   controlGroup: Group = new Group()
   gizmos: Mesh[] = []
   target: { pipe: ErectorPipe, object: Mesh } | null = null
@@ -115,7 +115,7 @@ export class UnifiedPipeControls extends Controls<{ change: { value: boolean }, 
   dragStartValue: number = 0 // Can be length or angle depending on gizmo type
   currentValue: number = 0
 
-  private coordinateManager: UnifiedCoordinateManager | null = null
+  private coordinateManager: CoordinateManager | null = null
 
   constructor(camera: Camera, domElement: HTMLElement) {
     super(camera, domElement);
@@ -130,7 +130,7 @@ export class UnifiedPipeControls extends Controls<{ change: { value: boolean }, 
   setTarget(pipe: ErectorPipe, object: Mesh) {
     this.clear()
     this.target = { pipe, object }
-    this.coordinateManager = new UnifiedCoordinateManager(object, this.controlGroup);
+    this.coordinateManager = new CoordinateManager(object, this.controlGroup);
     this.createAllGizmos()
     this.dispatchEvent({ type: 'change', value: true });
   }
