@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia'
-import { Euler, ExtrudeGeometry, Mesh, Quaternion, Vector3, MeshPhongMaterial, Object3D, Scene } from 'three'
+import { Euler, Mesh, Quaternion, Vector3, MeshPhongMaterial, Object3D, Scene, BufferGeometry } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/Addons.js'
-import { generateUUID } from 'three/src/math/MathUtils.js'
 import type { ErectorJoint, ErectorJointHole, ErectorPipe, ErectorPipeConnection } from '~/types/erector_component'
 import { genPipe } from '~/utils/Erector/pipe'
 import { degreesToRadians, radiansToDegrees } from '~/utils/angleUtils'
@@ -54,7 +53,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       const obj = this.instances.find(v => v.id === id)?.obj
       if (!obj) return;
       obj.traverse(v => {
-        if (v instanceof Mesh && v.geometry instanceof ExtrudeGeometry) {
+        if (v instanceof Mesh && v.geometry instanceof BufferGeometry) {
           v.geometry.dispose()
           v.geometry = genPipe(this.pipes[pipe].length, this.pipes[pipe].diameter)
           v.geometry.needsUpdate = true
