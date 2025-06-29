@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia'
-import { Euler, ExtrudeGeometry, Mesh, Quaternion, Vector3, MeshPhongMaterial, Object3D, Scene } from 'three'
+import { Euler, Mesh, Quaternion, Vector3, MeshPhongMaterial, Object3D, Scene, BufferGeometry } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/Addons.js'
-import { generateUUID } from 'three/src/math/MathUtils.js'
 import type { ErectorJoint, ErectorJointHole, ErectorPipe, ErectorPipeConnection } from '~/types/erector_component'
 import { genPipe } from '~/utils/Erector/pipe'
 import { degreesToRadians, radiansToDegrees } from '~/utils/angleUtils'
@@ -54,7 +53,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       const obj = this.instances.find(v => v.id === id)?.obj
       if (!obj) return;
       obj.traverse(v => {
-        if (v instanceof Mesh && v.geometry instanceof ExtrudeGeometry) {
+        if (v instanceof Mesh && v.geometry instanceof BufferGeometry) {
           v.geometry.dispose()
           v.geometry = genPipe(this.pipes[pipe].length, this.pipes[pipe].diameter)
           v.geometry.needsUpdate = true
@@ -679,7 +678,56 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
           update(updated, pipe, updatedTransform, updatePipeJointRelationshipMethod)
         }
       }
-    }
+    },
+    removeJoint(jointId: string) {
+      // 削除対象のジョイントを使用している全てのコネクションを収集して削除
+      const connectionsToRemove: string[] = [];
+
+      this.pipes.forEach(pipe => {
+        // start connection
+        if (pipe.connections.start?.jointId === jointId) {
+          connectionsToRemove.push(pipe.connections.start.id);
+        }
+
+        // end connection
+        if (pipe.connections.end?.jointId === jointId) {
+          connectionsToRemove.push(pipe.connections.end.id);
+        }
+
+        // midway connections
+        pipe.connections.midway.forEach(conn => {
+          if (conn.jointId === jointId) {
+            connectionsToRemove.push(conn.id);
+          }
+        });
+      });
+
+      // 収集したコネクションを削除
+      connectionsToRemove.forEach(connectionId => {
+        this.removeConnection(connectionId);
+      });
+
+      // ジョイントを配列から削除
+      const jointIndex = this.joints.findIndex(j => j.id === jointId);
+      if (jointIndex !== -1) {
+        this.joints.splice(jointIndex, 1);
+      }
+
+      // 3Dオブジェクトのインスタンスを削除
+      const instanceIndex = this.instances.findIndex(i => i.id === jointId);
+      if (instanceIndex !== -1) {
+        const three = useThree();
+        if (three.scene) {
+          const instance = this.instances[instanceIndex];
+          if (instance.obj) {
+            three.scene.remove(instance.obj);
+          }
+        }
+        this.instances.splice(instanceIndex, 1);
+      }
+    },
+
+    // ...existing code...
   },
   getters: {
     invalidJoints() {
