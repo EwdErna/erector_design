@@ -10,6 +10,7 @@ import { GLTFLoader } from 'three/examples/jsm/Addons.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { ErectorPipe } from '~/types/erector_component';
 import { JointControls } from '~/utils/Erector/JointControls';
+import { PipeControls } from '~/utils/Erector/PipeControls';
 import { degreesToRadians } from '~/utils/angleUtils';
 
 const container = useTemplateRef("container")
@@ -19,6 +20,7 @@ let renderer: WebGLRenderer
 let camera: PerspectiveCamera
 let controls: OrbitControls
 let jointControls: JointControls
+let unifiedPipeControls: PipeControls
 let rootPipeId: string
 const erector = useErectorPipeJoint()
 const rootPipeObject: Ref<Object3D | undefined> = ref()
@@ -43,9 +45,14 @@ function selectObject(event: MouseEvent) {
     const pipeObject = erector.pipes.find(p => p.id === rootObject.name)
     if (jointObject) {
       jointControls.setTarget(jointObject, rootObject as Mesh)
-    } else {
-      // Clear joint controls if not selecting a joint
+      unifiedPipeControls.clear()
+    } else if (pipeObject) {
+      unifiedPipeControls.setTarget(pipeObject, rootObject as Mesh)
       jointControls.clear()
+    } else {
+      // Clear all controls if not selecting a joint or pipe
+      jointControls.clear()
+      unifiedPipeControls.clear()
     }
     objectSelection.select(rootObject.name)
   }
@@ -130,6 +137,13 @@ const setupScene = () => {
   scene.add(jointControls.gizmoGroup)
   scene.add(jointControls.debugObjects)
 
+  unifiedPipeControls = new PipeControls(camera, renderer.domElement)
+  unifiedPipeControls.addEventListener('dragging-changed', e => {
+    controls.enabled = !e.value
+  })
+  scene.add(unifiedPipeControls.controlGroup)
+  scene.add(unifiedPipeControls.debugObjects)
+
   const gridHelper = new GridHelper(10, 10)
   scene.add(gridHelper)
 
@@ -178,6 +192,7 @@ const animate = (scene: Scene) => {
 watch(() => objectSelection.object, (newSelection) => {
   if (!newSelection || newSelection === '') {
     jointControls?.clear()
+    unifiedPipeControls?.clear()
   }
 })
 
@@ -197,6 +212,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
   if (jointControls) jointControls.dispose()
+  if (unifiedPipeControls) unifiedPipeControls.dispose()
   if (controls) controls.dispose()
   if (renderer) renderer.dispose()
 })
