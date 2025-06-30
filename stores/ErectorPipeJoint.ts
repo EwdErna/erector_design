@@ -21,29 +21,34 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
     instances: [] as { id: string, obj?: Object3D }[],
     renderCount: 0,
     pipeJointRelationships: [] as PipeJointRelationship[],
+    rootPipeId: '' as string,
   }),
   actions: {
     addPipe(scene: Scene, diameter: number, length: number, id?: string) {//pipeの存在だけを追加
       if (!id) id = this.newPipeId
-      this.pipes.push({
-        id,
-        diameter,
-        length,
-        connections: {
-          midway: [],
-        }
-      })
-      if (!this.instances.some(i => i.id === id)) {
-        const pipeModel = genPipe(length, diameter)
-        const pipeObject = new Object3D()
-        const pipeMesh = new Mesh(pipeModel, new MeshPhongMaterial())
-        pipeObject.name = id
-        pipeObject.add(pipeMesh)
-        this.instances.push({ id, obj: pipeObject })
-        console.log(pipeObject)
-        // TODO: get scene and add pipeObject to it
-        scene.add(pipeObject)
+      if (!this.pipes.some(p => p.id === id)) {
+        this.pipes.push({
+          id,
+          diameter,
+          length,
+          connections: {
+            midway: [],
+          }
+        })
       }
+      if (this.instances.some(i => i.id === id)) {
+        //既存のpipeを削除
+        this.removePipe(id)
+      }
+      const pipeModel = genPipe(length, diameter)
+      const pipeObject = new Object3D()
+      const pipeMesh = new Mesh(pipeModel, new MeshPhongMaterial())
+      pipeObject.name = id
+      pipeObject.add(pipeMesh)
+      this.instances.push({ id, obj: pipeObject })
+      console.log(pipeObject)
+      // TODO: get scene and add pipeObject to it
+      scene.add(pipeObject)
       return id
     },
     updatePipe(id: string, key: 'length' | 'diameter', value: number) {
@@ -106,7 +111,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
           }
           break
         case 'midway':
-          console.log(position)
+          //console.log(position)
           if (id && pipe.connections.midway.some(conn => conn.id === id)) {
             //既に接続されてるので無視
             return
@@ -129,7 +134,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       if (connection === -1) return //startでもendでもなく、midwayにも存在しない
       const connectionBeforeUpdate = typeof connection === 'number' ? pipe.connections.midway[connection] : pipe.connections[connection]
       if (!connectionBeforeUpdate) return
-      console.log(`connection: ${connection} toUpdate: ${JSON.stringify(connectionToUpdate)}`)
+      //console.log(`connection: ${connection} toUpdate: ${JSON.stringify(connectionToUpdate)}`)
       if (connection === 'start' || connection === 'end') {
         pipe.connections[connection] = { ...connectionBeforeUpdate, ...connectionToUpdate }
       } else {
@@ -164,13 +169,20 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
 
       // Remove all instances from the scene
       this.instances.forEach(instance => {
+        console.log(`Removing instance with id: ${instance.id}`)
         if (instance.obj) {
+          console.log(`Removing object with id: ${instance.id} from scene`)
           scene.remove(instance.obj)
           // Dispose of geometry and materials to free memory
           instance.obj.traverse((child) => {
+            console.log(`Disposing child: ${child.name} (${child.type})`)
             if (child instanceof Mesh) {
-              if (child.geometry) child.geometry.dispose()
+              if (child.geometry) {
+                console.log(`Disposing geometry for child: ${child.name}`)
+                child.geometry.dispose()
+              }
               if (child.material) {
+                console.log(`Disposing material for child: ${child.name}`)
                 if (Array.isArray(child.material)) {
                   child.material.forEach(material => material.dispose())
                 } else {
@@ -188,8 +200,12 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       this.instances = []
       this.pipeJointRelationships = []
       this.renderCount = 0
+      this.rootPipeId = ''
     },
-    loadFromStructure(structure: { pipes: ErectorPipe[], joints: { id: string, name: string }[], rootTransform?: { pipeId: string, position: [number, number, number], rotation: [number, number, number, number] } }) {
+    loadFromStructure(structure: { pipes: ErectorPipe[], joints: { id: string, name: string }[], rootTransform?: { pipeId: string, position: [number, number, number], rotation: [number, number, number] } }) {
+      // Clear all existing pipes and joints before loading new structure
+      this.clearAll()
+
       const three = useThree()
       if (!three.scene) return;
       const scene = three.scene
@@ -240,11 +256,13 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       })
       // Apply root transform if provided
       if (structure.rootTransform) {
-        const rootInstance = this.instances.find(i => i.id === structure.rootTransform!.pipeId)?.obj
-        if (rootInstance) {
-          rootInstance.position.set(...structure.rootTransform.position)
-          rootInstance.quaternion.set(...structure.rootTransform.rotation)
-        }
+        const rootPipeId = structure.rootTransform.pipeId
+        this.updateObjectPosition(rootPipeId, structure.rootTransform.position)
+        this.updateObjectRotation(rootPipeId, structure.rootTransform.rotation)
+        this.rootPipeId = rootPipeId
+      } else {
+        // Set the first pipe as root if no root transform is provided
+        this.rootPipeId = structure.pipes.length > 0 ? structure.pipes[0].id : ''
       }
     },
     updatePipeJointRelationship(pipeId: string, jointId: string, holeId: number, connectionType: 'start' | 'end' | 'midway', relationshipType: 'j2p' | 'p2j') {
@@ -376,11 +394,11 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
 
       if (pipe) {
         // パイプが移動された場合、接続されたジョイントの位置を再計算
-        console.log(`Recalculating dependencies for pipe ${id}`)
+        //console.log(`Recalculating dependencies for pipe ${id}`)
         this.recalculatePipeDependencies(pipe)
       } else if (joint) {
         // ジョイントが移動された場合、接続されたパイプの位置を再計算
-        console.log(`Recalculating dependencies for joint ${id}`)
+        //console.log(`Recalculating dependencies for joint ${id}`)
         this.recalculateJointDependencies(joint)
       }
 
@@ -406,7 +424,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
         dependencies.push({ jointId: conn.jointId, connectionType: 'midway' })
       })
 
-      console.log(`Pipe ${pipe.id} has ${dependencies.length} joint dependencies`)
+      //console.log(`Pipe ${pipe.id} has ${dependencies.length} joint dependencies`)
     },
 
     /**
@@ -420,7 +438,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
           pipe.connections.midway.some(conn => conn.jointId === joint.id)
       })
 
-      console.log(`Joint ${joint.id} affects ${connectedPipes.length} pipes`)
+      //console.log(`Joint ${joint.id} affects ${connectedPipes.length} pipes`)
     },
 
     /**
@@ -446,7 +464,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
           const end = pipe.connections.end
           if (start && updated.includes(start.jointId)) {
             if (renderCount % 100 === 0) {
-              console.log(`Pipe ${pipe.id} start joint ${start.jointId} already updated`)
+              //console.log(`Pipe ${pipe.id} start joint ${start.jointId} already updated`)
             }
             const joint = joints.find(joint => joint.id === start.jointId)
             const jointInstance = instances.find(i => i.id === start.jointId)?.obj
@@ -467,7 +485,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
           }
           else if (end && updated.includes(end.jointId)) {
             if (renderCount % 100 === 0) {
-              console.log(`Pipe ${pipe.id} end joint ${end.jointId} already updated`)
+              //console.log(`Pipe ${pipe.id} end joint ${end.jointId} already updated`)
             }
             const joint = joints.find(joint => joint.id === end.jointId)
             const jointInstance = instances.find(i => i.id === end.jointId)?.obj
@@ -535,7 +553,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
                 if (next_start) { //があったら更新予定に追加
                   nextUpdate.push(next_start.id)
                   if (renderCount % 100 === 0) {
-                    console.log(`pipe ${next_start.id} pushed to next by start joint ${joint.id} for pipe ${pipe.id}`)
+                    //console.log(`pipe ${next_start.id} pushed to next by start joint ${joint.id} for pipe ${pipe.id}`)
                   }
                 }
               })
@@ -583,7 +601,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
                 if (next_start) { //があったら更新予定に追加
                   nextUpdate.push(next_start.id)
                   if (renderCount % 100 === 0) {
-                    console.log(`pipe ${next_start.id} pushed to next by end joint ${joint.id} for pipe ${pipe.id}`)
+                    //console.log(`pipe ${next_start.id} pushed to next by end joint ${joint.id} for pipe ${pipe.id}`)
                   }
                 }
               })
@@ -621,7 +639,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
                 if (next_start) { //があったら更新予定に追加
                   nextUpdate.push(next_start.id)
                   if (renderCount % 100 === 0) {
-                    console.log(`pipe ${next_start.id} pushed to next by midway joint ${joint.id} for pipe ${pipe.id}`)
+                    //console.log(`pipe ${next_start.id} pushed to next by midway joint ${joint.id} for pipe ${pipe.id}`)
                   }
                 }
               })
@@ -727,12 +745,83 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       }
     },
 
+    removePipe(pipeId: string) {
+      // 削除対象のパイプのコネクションを収集して削除
+      const connectionsToRemove: string[] = [];
+      const pipe = this.pipes.find(p => p.id === pipeId);
+
+      if (!pipe) {
+        console.warn(`Pipe with id ${pipeId} not found`);
+        return;
+      }
+
+      // start connection
+      if (pipe.connections.start) {
+        connectionsToRemove.push(pipe.connections.start.id);
+      }
+
+      // end connection
+      if (pipe.connections.end) {
+        connectionsToRemove.push(pipe.connections.end.id);
+      }
+
+      // midway connections
+      pipe.connections.midway.forEach(conn => {
+        connectionsToRemove.push(conn.id);
+      });
+
+      // 収集したコネクションを削除
+      connectionsToRemove.forEach(connectionId => {
+        this.removeConnection(connectionId);
+      });
+
+      // パイプを配列から削除
+      const pipeIndex = this.pipes.findIndex(p => p.id === pipeId);
+      if (pipeIndex !== -1) {
+        this.pipes.splice(pipeIndex, 1);
+      }
+
+      // 3Dオブジェクトのインスタンスを削除
+      const instanceIndex = this.instances.findIndex(i => i.id === pipeId);
+      if (instanceIndex !== -1) {
+        const three = useThree();
+        if (three.scene) {
+          const instance = this.instances[instanceIndex];
+          if (instance.obj) {
+            // シーンから削除
+            three.scene.remove(instance.obj);
+
+            // ジオメトリとマテリアルを適切に破棄してメモリリークを防ぐ
+            instance.obj.traverse((child) => {
+              if (child instanceof Mesh) {
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) {
+                  if (Array.isArray(child.material)) {
+                    child.material.forEach(material => material.dispose());
+                  } else {
+                    child.material.dispose();
+                  }
+                }
+              }
+            });
+          }
+        }
+        this.instances.splice(instanceIndex, 1);
+      }
+
+      //console.log(`Pipe ${pipeId} removed successfully`);
+    },
+
     // ...existing code...
   },
   getters: {
     invalidJoints() {
       // jointの座標や向きを検証し、つなげることのできない場所があれば配列として返却
       return []
+    },
+    rootPipeObject(): Object3D | undefined {
+      if (!this.rootPipeId) return undefined
+      return this.instances.find(i => i.id === this.rootPipeId)?.obj
     },
     newPipeId(): string {
       const existing_id = this.pipes.map(v => Number.parseInt(v.id.split('_')[1], 10));
