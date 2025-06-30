@@ -21,9 +21,7 @@ let camera: PerspectiveCamera
 let controls: OrbitControls
 let jointControls: JointControls
 let unifiedPipeControls: PipeControls
-let rootPipeId: string
 const erector = useErectorPipeJoint()
-const rootPipeObject: Ref<Object3D | undefined> = ref()
 
 function selectObject(event: MouseEvent) {
   const rect = container.value?.getBoundingClientRect()
@@ -151,9 +149,10 @@ const setupScene = () => {
   scene.add(axesHelper)
 
   erector.loadFromStructure(erector_structure)
-  rootPipeId = erector_structure.pipes[0].id
-  rootPipeObject.value = erector.instances.find(i => i.id === rootPipeId)?.obj
-  rootPipeObject.value?.rotation.set(0, degreesToRadians(40), 0)
+  // Apply initial rotation to the root pipe object
+  if (erector.rootPipeObject) {
+    erector.rootPipeObject.rotation.set(0, degreesToRadians(40), 0)
+  }
 
   const ambientLight = new AmbientLight(0xffffff, 0.5)
   scene.add(ambientLight)
@@ -164,20 +163,18 @@ const setupScene = () => {
 }
 const animate = (scene: Scene) => {
   if (!scene) return;
-  if (!erector.pipes.find(p => p.id === rootPipeId)) {
-    rootPipeObject.value = undefined
+  if (!erector.pipes.find(p => p.id === erector.rootPipeId)) {
     if (erector.pipes.length === 0) {
       //console.log("No pipes in erector")
     } else {
       console.log("rootPipeId not found in erector pipes, resetting to first instance")
-      rootPipeId = erector.instances[0].id
-      rootPipeObject.value = erector.instances.find(i => i.id === rootPipeId)?.obj
+      erector.rootPipeId = erector.instances[0].id
     }
   }
-  if (rootPipeObject.value) {
+  if (erector.rootPipeObject) {
     const calculatePosition = erector.calculateWorldPosition()
     calculatePosition({
-      id: rootPipeId, position: rootPipeObject.value?.position.clone() ?? new Vector3(), rotation: new Quaternion().setFromEuler(rootPipeObject.value?.rotation ?? new Euler(0, 0, 0))
+      id: erector.rootPipeId, position: erector.rootPipeObject?.position.clone() ?? new Vector3(), rotation: new Quaternion().setFromEuler(erector.rootPipeObject?.rotation ?? new Euler(0, 0, 0))
     })
   }
 
