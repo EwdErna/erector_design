@@ -81,7 +81,7 @@ function handleFileUpload(event: Event) {
       if (structure.rootTransform) {
         const rt = structure.rootTransform
         if (!rt.pipeId || !Array.isArray(rt.position) || rt.position.length !== 3 ||
-          !Array.isArray(rt.rotation) || rt.rotation.length !== 4) {
+          !Array.isArray(rt.rotation) || rt.rotation.length !== 3) {
           console.warn('Invalid rootTransform format, ignoring.')
           delete structure.rootTransform
         }
