@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { Euler, Mesh, Quaternion, Vector3, MeshPhongMaterial, Object3D, Scene, BufferGeometry } from 'three'
+import { Euler, Mesh, Quaternion, Vector3, MeshPhongMaterial, Object3D, Scene, BufferGeometry, ArrowHelper } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/Addons.js'
 import type { ErectorJoint, ErectorJointHole, ErectorPipe, ErectorPipeConnection } from '~/types/erector_component'
 import { genPipe } from '~/utils/Erector/pipe'
@@ -14,6 +14,29 @@ export type PipeJointRelationship = {
   relationshipType: 'j2p' | 'p2j' // j2p: joint determines pipe, p2j: pipe determines joint
 }
 
+type InvalidConnection = {
+  id: string
+  pipeId: string
+  jointId: string
+  holeId: number
+  side: 'start' | 'end' | 'midway'
+  position: {
+    actual: Vector3
+    expected: Vector3
+    diff: number
+  }
+  rotation: {
+    actual: Vector3
+    expected: Vector3
+    diff: number
+  }
+  right: {
+    actual: Vector3
+    expected: Vector3
+    diff: number
+  }
+}
+
 export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
   state: () => ({
     pipes: [] as ErectorPipe[],
@@ -21,6 +44,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
     instances: [] as { id: string, obj?: Object3D }[],
     renderCount: 0,
     pipeJointRelationships: [] as PipeJointRelationship[],
+    invalidConnections: [] as InvalidConnection[],
     rootPipeId: '' as string,
   }),
   actions: {
@@ -49,6 +73,9 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       console.log(pipeObject)
       // TODO: get scene and add pipeObject to it
       scene.add(pipeObject)
+
+      // 変更を加えたので再validate
+      this.validateConnections()
       return id
     },
     updatePipe(id: string, key: 'length' | 'diameter', value: number) {
@@ -64,6 +91,9 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
           v.geometry.needsUpdate = true
         }
       })
+
+      // 変更を加えたので再validate
+      this.validateConnections()
     },
     addJoint(scene: Scene, name: string, category: string, holes: ErectorJointHole[], id?: string) {//jointの存在だけを追加
       const loader = new GLTFLoader() //TODO: use singleton
@@ -87,6 +117,9 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
           scene.add(model)
         })
       }
+
+      // 変更を加えたので再validate
+      this.validateConnections()
       return id
     },
     addConnection(pipeId: string, jointId: string, holeId: number, side: "start" | "end" | "midway", rotation?: number, position?: number, id?: string) {//jointの穴にpipeを接続
@@ -125,6 +158,9 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
           })
           break
       }
+
+      // 変更を加えたので再validate
+      this.validateConnections()
     },
     updateConnection(id: string, connectionToUpdate: Partial<ErectorPipeConnection>) {
       //find connection with id 
@@ -140,6 +176,9 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       } else {
         pipe.connections.midway[connection] = { ...connectionBeforeUpdate, ...connectionToUpdate }
       }
+
+      // 変更を加えたので再validate
+      this.validateConnections()
     },
     removeConnection(id: string) {
       const pipe = this.pipes.find(p => p.connections.start?.id === id || p.connections.end?.id === id || p.connections.midway.some(conn => conn.id === id))
@@ -161,6 +200,9 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
           pipe.connections.midway.splice(index, 1)
         }
       }
+
+      // 変更を加えたので再validate
+      this.validateConnections()
     },
     clearAll() {
       const three = useThree()
@@ -201,6 +243,9 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       this.pipeJointRelationships = []
       this.renderCount = 0
       this.rootPipeId = ''
+
+      // 変更を加えたので再validate
+      this.validateConnections()
     },
     loadFromStructure(structure: { pipes: ErectorPipe[], joints: { id: string, name: string }[], rootTransform?: { pipeId: string, position: [number, number, number], rotation: [number, number, number] } }) {
       // Clear all existing pipes and joints before loading new structure
@@ -264,6 +309,9 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
         // Set the first pipe as root if no root transform is provided
         this.rootPipeId = structure.pipes.length > 0 ? structure.pipes[0].id : ''
       }
+
+      // 変更を加えたので再validate
+      this.validateConnections()
     },
     updatePipeJointRelationship(pipeId: string, jointId: string, holeId: number, connectionType: 'start' | 'end' | 'midway', relationshipType: 'j2p' | 'p2j') {
       // Remove existing relationship for this specific connection
@@ -279,6 +327,9 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
         connectionType,
         relationshipType
       })
+
+      // 変更を加えたので再validate
+      this.validateConnections()
     },
 
     getPipeJointRelationship(pipeId: string, jointId: string, holeId: number, connectionType: 'start' | 'end' | 'midway'): 'j2p' | 'p2j' | null {
@@ -292,6 +343,9 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       this.pipeJointRelationships = this.pipeJointRelationships.filter(rel =>
         !(rel.pipeId === pipeId && rel.jointId === jointId && rel.holeId === holeId && rel.connectionType === connectionType)
       )
+
+      // 変更を加えたので再validate
+      this.validateConnections()
     },
 
     /**
@@ -310,6 +364,9 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
 
       // 座標変更をログに記録（デバッグ用）
       console.log(`Updated position for ${id}: [${position.join(', ')}]`)
+
+      // 変更を加えたので再validate
+      this.validateConnections()
     },
 
     /**
@@ -333,6 +390,9 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
 
       // 回転変更をログに記録（デバッグ用）
       console.log(`Updated rotation for ${id}: [${rotation.join(', ')}]° -> [${instance.obj.rotation.x}, ${instance.obj.rotation.y}, ${instance.obj.rotation.z}] rad`)
+
+      // 変更を加えたので再validate
+      this.validateConnections()
     },
 
     /**
@@ -350,6 +410,9 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       if (transform.rotation) {
         this.updateObjectRotation(id, transform.rotation)
       }
+
+      // 変更を加えたので再validate
+      this.validateConnections()
     },
 
     /**
@@ -697,6 +760,162 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
         }
       }
     },
+    validateConnections() {
+      // コネクションの整合性を検証する
+      const errors: InvalidConnection[] = []
+
+      this.pipes.forEach(pipe => {
+        if (pipe.connections.start) {
+          const conn = pipe.connections.start
+          const joint = this.joints.find(j => j.id === conn.jointId)
+          if (!joint) {
+          } else if (!joint.holes[pipe.connections.start.holeId]) {
+          } else {
+            const hole = joint.holes[pipe.connections.start.holeId]
+            const jointInstance = this.instances.find(i => i.id === conn.jointId)?.obj
+            const pipeInstance = this.instances.find(i => i.id === pipe.id)?.obj
+            if (!jointInstance || !pipeInstance) { } else {
+              const actualHolePos = jointInstance.position.clone()
+                .add(hole.offset.clone().applyQuaternion(jointInstance.quaternion.clone().invert()))
+              const expectedHolePos = pipeInstance.position.clone()
+              const holePosDiff = actualHolePos.distanceTo(expectedHolePos)
+
+              const actualHoleDir = new Vector3(0, 0, 1).applyQuaternion(jointInstance.quaternion.clone().multiply(hole.dir))
+              const expectedHoleDir = new Vector3(0, 0, 1).applyQuaternion(pipeInstance.quaternion)
+              const holeDirDiff = actualHoleDir.angleTo(expectedHoleDir)
+              const actualHoleRight = new Vector3(1, 0, 0).applyQuaternion(jointInstance.quaternion.clone().multiply(hole.dir))
+              const expectedHoleRight = new Vector3(1, 0, 0).applyQuaternion(pipeInstance.quaternion.clone()
+                .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), degreesToRadians(conn.rotation))))
+              const holeRightDiff = actualHoleRight.angleTo(expectedHoleRight)
+              if (holePosDiff > 0.001 || holeDirDiff > 0.001 || holeRightDiff > 0.001) {
+                errors.push({
+                  side: 'start',
+                  id: conn.id,
+                  pipeId: pipe.id,
+                  jointId: conn.jointId,
+                  holeId: conn.holeId,
+                  position: {
+                    actual: actualHolePos,
+                    expected: expectedHolePos,
+                    diff: holePosDiff
+                  },
+                  rotation: {
+                    actual: actualHoleDir,
+                    expected: expectedHoleDir,
+                    diff: holeDirDiff
+                  },
+                  right: {
+                    actual: actualHoleRight,
+                    expected: expectedHoleRight,
+                    diff: holeRightDiff
+                  }
+                })
+              }
+            }
+          }
+        }
+        if (pipe.connections.end) {
+          const conn = pipe.connections.end
+          const joint = this.joints.find(j => j.id === conn.jointId)
+          if (!joint) {
+          } else if (!joint.holes[pipe.connections.end.holeId]) {
+          } else {
+            const hole = joint.holes[pipe.connections.end.holeId]
+            const jointInstance = this.instances.find(i => i.id === conn.jointId)?.obj
+            const pipeInstance = this.instances.find(i => i.id === pipe.id)?.obj
+            if (!jointInstance || !pipeInstance) { } else {
+              const actualHolePos = jointInstance.position.clone()
+                .add(hole.offset.clone().applyQuaternion(jointInstance.quaternion.clone().invert()))
+              const expectedHolePos = pipeInstance.position.clone()
+                .add(new Vector3(0, 0, 1).applyQuaternion(pipeInstance.quaternion).multiplyScalar(pipe.length))
+              const holePosDiff = actualHolePos.distanceTo(expectedHolePos)
+
+              const actualHoleDir = new Vector3(0, 0, 1).applyQuaternion(jointInstance.quaternion.clone().multiply(hole.dir))
+              const expectedHoleDir = new Vector3(0, 0, 1).applyQuaternion(pipeInstance.quaternion)
+              const holeDirDiff = actualHoleDir.angleTo(expectedHoleDir)
+              const actualHoleRight = new Vector3(1, 0, 0).applyQuaternion(jointInstance.quaternion.clone().multiply(hole.dir))
+              const expectedHoleRight = new Vector3(1, 0, 0).applyQuaternion(pipeInstance.quaternion.clone()
+                .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), degreesToRadians(conn.rotation))))
+              const holeRightDiff = actualHoleRight.angleTo(expectedHoleRight)
+              if (holePosDiff > 0.001 || holeDirDiff > 0.001 || holeRightDiff > 0.001) {
+                errors.push({
+                  side: 'end',
+                  id: conn.id,
+                  pipeId: pipe.id,
+                  jointId: conn.jointId,
+                  holeId: conn.holeId,
+                  position: {
+                    actual: actualHolePos,
+                    expected: expectedHolePos,
+                    diff: holePosDiff
+                  },
+                  rotation: {
+                    actual: actualHoleDir,
+                    expected: expectedHoleDir,
+                    diff: holeDirDiff
+                  },
+                  right: {
+                    actual: actualHoleRight,
+                    expected: expectedHoleRight,
+                    diff: holeRightDiff
+                  }
+                })
+              }
+            }
+          }
+        }
+        pipe.connections.midway.forEach(conn => {
+          const joint = this.joints.find(j => j.id === conn.jointId)
+          if (!joint) {
+          } else if (!joint.holes[conn.holeId]) {
+          } else {
+            const hole = joint.holes[conn.holeId]
+            const jointInstance = this.instances.find(i => i.id === conn.jointId)?.obj
+            const pipeInstance = this.instances.find(i => i.id === pipe.id)?.obj
+            if (!jointInstance || !pipeInstance) { } else {
+              const actualHolePos = jointInstance.position.clone()
+                .add(hole.offset.clone().applyQuaternion(jointInstance.quaternion.clone().invert()))
+              const expectedHolePos = pipeInstance.position.clone()
+                .add(new Vector3(0, 0, 1).applyQuaternion(pipeInstance.quaternion).multiplyScalar(pipe.length * conn.position))
+              const holePosDiff = actualHolePos.distanceTo(expectedHolePos)
+
+              const actualHoleDir = new Vector3(0, 0, 1).applyQuaternion(jointInstance.quaternion.clone().multiply(hole.dir))
+              const expectedHoleDir = new Vector3(0, 0, 1).applyQuaternion(pipeInstance.quaternion)
+              const holeDirDiff = actualHoleDir.angleTo(expectedHoleDir)
+              const actualHoleRight = new Vector3(1, 0, 0).applyQuaternion(jointInstance.quaternion.clone().multiply(hole.dir))
+              const expectedHoleRight = new Vector3(1, 0, 0).applyQuaternion(pipeInstance.quaternion.clone()
+                .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), degreesToRadians(conn.rotation))))
+              const holeRightDiff = actualHoleRight.angleTo(expectedHoleRight)
+              if (holePosDiff > 0.001 || holeDirDiff > 0.001 || holeRightDiff > 0.001) {
+                errors.push({
+                  side: 'midway',
+                  id: conn.id,
+                  pipeId: pipe.id,
+                  jointId: conn.jointId,
+                  holeId: conn.holeId,
+                  position: {
+                    actual: actualHolePos,
+                    expected: expectedHolePos,
+                    diff: holePosDiff
+                  },
+                  rotation: {
+                    actual: actualHoleDir,
+                    expected: expectedHoleDir,
+                    diff: holeDirDiff
+                  },
+                  right: {
+                    actual: actualHoleRight,
+                    expected: expectedHoleRight,
+                    diff: holeRightDiff
+                  }
+                })
+              }
+            }
+          }
+        })
+      })
+      this.invalidConnections = errors
+    },
     removeJoint(jointId: string) {
       // 削除対象のジョイントを使用している全てのコネクションを収集して削除
       const connectionsToRemove: string[] = [];
@@ -743,6 +962,9 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
         }
         this.instances.splice(instanceIndex, 1);
       }
+
+      //削除されたので再validate
+      this.validateConnections();
     },
 
     removePipe(pipeId: string) {
@@ -809,16 +1031,11 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
         this.instances.splice(instanceIndex, 1);
       }
 
-      //console.log(`Pipe ${pipeId} removed successfully`);
+      //削除されたので再validate
+      this.validateConnections();
     },
-
-    // ...existing code...
   },
   getters: {
-    invalidJoints() {
-      // jointの座標や向きを検証し、つなげることのできない場所があれば配列として返却
-      return []
-    },
     rootPipeObject(): Object3D | undefined {
       if (!this.rootPipeId) return undefined
       return this.instances.find(i => i.id === this.rootPipeId)?.obj
