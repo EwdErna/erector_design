@@ -46,6 +46,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
     pipeJointRelationships: [] as PipeJointRelationship[],
     invalidConnections: [] as InvalidConnection[],
     rootPipeId: '' as string,
+    debugArrows: [] as ArrowHelper[], // デバッグ用の矢印オブジェクト
   }),
   actions: {
     addPipe(scene: Scene, diameter: number, length: number, id?: string) {//pipeの存在だけを追加
@@ -235,6 +236,9 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
           })
         }
       })
+
+      // デバッグ矢印もクリア
+      this.clearDebugArrows()
 
       // Clear all data arrays
       this.pipes = []
@@ -776,7 +780,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
             const pipeInstance = this.instances.find(i => i.id === pipe.id)?.obj
             if (!jointInstance || !pipeInstance) { } else {
               const actualHolePos = jointInstance.position.clone()
-                .add(hole.offset.clone().applyQuaternion(jointInstance.quaternion.clone().invert()))
+                .add(hole.offset.clone().applyQuaternion(jointInstance.quaternion.clone()))
               const expectedHolePos = pipeInstance.position.clone()
               const holePosDiff = actualHolePos.distanceTo(expectedHolePos)
 
@@ -785,7 +789,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
               const holeDirDiff = actualHoleDir.angleTo(expectedHoleDir)
               const actualHoleRight = new Vector3(1, 0, 0).applyQuaternion(jointInstance.quaternion.clone().multiply(hole.dir))
               const expectedHoleRight = new Vector3(1, 0, 0).applyQuaternion(pipeInstance.quaternion.clone()
-                .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), degreesToRadians(conn.rotation))))
+                .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), degreesToRadians(-conn.rotation))))
               const holeRightDiff = actualHoleRight.angleTo(expectedHoleRight)
               if (holePosDiff > 0.001 || holeDirDiff > 0.001 || holeRightDiff > 0.001) {
                 errors.push({
@@ -825,17 +829,17 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
             const pipeInstance = this.instances.find(i => i.id === pipe.id)?.obj
             if (!jointInstance || !pipeInstance) { } else {
               const actualHolePos = jointInstance.position.clone()
-                .add(hole.offset.clone().applyQuaternion(jointInstance.quaternion.clone().invert()))
+                .add(hole.offset.clone().applyQuaternion(jointInstance.quaternion.clone()))
               const expectedHolePos = pipeInstance.position.clone()
                 .add(new Vector3(0, 0, 1).applyQuaternion(pipeInstance.quaternion).multiplyScalar(pipe.length))
               const holePosDiff = actualHolePos.distanceTo(expectedHolePos)
 
               const actualHoleDir = new Vector3(0, 0, 1).applyQuaternion(jointInstance.quaternion.clone().multiply(hole.dir))
-              const expectedHoleDir = new Vector3(0, 0, 1).applyQuaternion(pipeInstance.quaternion)
+              const expectedHoleDir = new Vector3(0, 0, -1).applyQuaternion(pipeInstance.quaternion)
               const holeDirDiff = actualHoleDir.angleTo(expectedHoleDir)
               const actualHoleRight = new Vector3(1, 0, 0).applyQuaternion(jointInstance.quaternion.clone().multiply(hole.dir))
-              const expectedHoleRight = new Vector3(1, 0, 0).applyQuaternion(pipeInstance.quaternion.clone()
-                .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), degreesToRadians(conn.rotation))))
+              const expectedHoleRight = new Vector3(-1, 0, 0).applyQuaternion(pipeInstance.quaternion.clone()
+                .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, -1), degreesToRadians(-conn.rotation))))
               const holeRightDiff = actualHoleRight.angleTo(expectedHoleRight)
               if (holePosDiff > 0.001 || holeDirDiff > 0.001 || holeRightDiff > 0.001) {
                 errors.push({
@@ -874,7 +878,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
             const pipeInstance = this.instances.find(i => i.id === pipe.id)?.obj
             if (!jointInstance || !pipeInstance) { } else {
               const actualHolePos = jointInstance.position.clone()
-                .add(hole.offset.clone().applyQuaternion(jointInstance.quaternion.clone().invert()))
+                .add(hole.offset.clone().applyQuaternion(jointInstance.quaternion.clone()))
               const expectedHolePos = pipeInstance.position.clone()
                 .add(new Vector3(0, 0, 1).applyQuaternion(pipeInstance.quaternion).multiplyScalar(pipe.length * conn.position))
               const holePosDiff = actualHolePos.distanceTo(expectedHolePos)
@@ -884,7 +888,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
               const holeDirDiff = actualHoleDir.angleTo(expectedHoleDir)
               const actualHoleRight = new Vector3(1, 0, 0).applyQuaternion(jointInstance.quaternion.clone().multiply(hole.dir))
               const expectedHoleRight = new Vector3(1, 0, 0).applyQuaternion(pipeInstance.quaternion.clone()
-                .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), degreesToRadians(conn.rotation))))
+                .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), degreesToRadians(-conn.rotation))))
               const holeRightDiff = actualHoleRight.angleTo(expectedHoleRight)
               if (holePosDiff > 0.001 || holeDirDiff > 0.001 || holeRightDiff > 0.001) {
                 errors.push({
@@ -915,6 +919,9 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
         })
       })
       this.invalidConnections = errors
+
+      // デバッグ用: 無効な接続を可視化
+      this.visualizeInvalidConnections()
     },
     removeJoint(jointId: string) {
       // 削除対象のジョイントを使用している全てのコネクションを収集して削除
@@ -1033,6 +1040,87 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
 
       //削除されたので再validate
       this.validateConnections();
+    },
+
+    /**
+     * デバッグ用の矢印をすべて削除する
+     */
+    clearDebugArrows() {
+      const three = useThree()
+      if (!three.scene) return
+
+      this.debugArrows.forEach(arrow => {
+        if (three.scene) {
+          three.scene.remove(arrow)
+        }
+        arrow.dispose()
+      })
+      this.debugArrows = []
+    },
+
+    /**
+     * 無効な接続のデバッグ情報を可視化する
+     */
+    visualizeInvalidConnections() {
+      const three = useThree()
+      if (!three.scene) return
+
+      // 既存のデバッグ矢印を削除
+      this.clearDebugArrows()
+
+      this.invalidConnections.forEach(invalidConn => {
+        if (!three.scene) return
+
+        // Position arrows (actual: red, expected: green)
+        const actualPosArrow = new ArrowHelper(
+          invalidConn.rotation.actual.clone().normalize(),
+          invalidConn.position.actual,
+          0.5,
+          0x0000ff,
+          0.1,
+          0.05
+        )
+        actualPosArrow.name = `debug-actual-pos-${invalidConn.id}`
+        three.scene.add(actualPosArrow)
+        this.debugArrows.push(actualPosArrow)
+
+        const expectedPosArrow = new ArrowHelper(
+          invalidConn.rotation.expected.clone().normalize(),
+          invalidConn.position.expected,
+          0.5,
+          0xccccff,
+          0.1,
+          0.05
+        )
+        expectedPosArrow.name = `debug-expected-pos-${invalidConn.id}`
+        three.scene.add(expectedPosArrow)
+        this.debugArrows.push(expectedPosArrow)
+
+        // Right direction arrows (actual: orange, expected: cyan)
+        const actualRightArrow = new ArrowHelper(
+          invalidConn.right.actual.clone().normalize(),
+          invalidConn.position.actual,
+          0.5,
+          0xff0000,
+          0.1,
+          0.05
+        )
+        actualRightArrow.name = `debug-actual-right-${invalidConn.id}`
+        three.scene.add(actualRightArrow)
+        this.debugArrows.push(actualRightArrow)
+
+        const expectedRightArrow = new ArrowHelper(
+          invalidConn.right.expected.clone().normalize(),
+          invalidConn.position.expected,
+          0.5,
+          0xffcccc,
+          0.1,
+          0.05
+        )
+        expectedRightArrow.name = `debug-expected-right-${invalidConn.id}`
+        three.scene.add(expectedRightArrow)
+        this.debugArrows.push(expectedRightArrow)
+      })
     },
   },
   getters: {
