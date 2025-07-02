@@ -315,24 +315,8 @@ function removeObject(obj: ErectorPipe | ErectorJoint) {
   const id = obj.id;
 
   if (isErectorPipe(obj)) {
-    // パイプの削除
-    const pipeIndex = erector.pipes.findIndex(p => p.id === id);
-    if (pipeIndex !== -1) {
-      erector.pipes.splice(pipeIndex, 1);
-    }
-
-    // 3Dオブジェクトのインスタンスを削除
-    const instanceIndex = erector.instances.findIndex(i => i.id === id);
-    if (instanceIndex !== -1) {
-      const scene = useThree().scene;
-      if (scene) {
-        const instance = erector.instances[instanceIndex];
-        if (instance.obj) {
-          scene.remove(instance.obj);
-        }
-        erector.instances.splice(instanceIndex, 1);
-      }
-    }
+    // パイプの削除（関連するコネクションも含めて適切に削除）
+    erector.removePipe(id);
   } else {
     // ジョイントの削除（関連するコネクションも含めて削除）
     erector.removeJoint(id);
@@ -345,13 +329,13 @@ function removeObject(obj: ErectorPipe | ErectorJoint) {
 }
 
 function updateConnection(event: Event, pipeId: string, id: string, key: keyof ErectorPipeConnection) {
-  console.log(`Updating connection ${id} on pipe ${pipeId} with key ${key}`);
+  //console.log(`Updating connection ${id} on pipe ${pipeId} with key ${key}`);
   const target = event.target as HTMLSelectElement | HTMLInputElement;
   const value = target.value;
   if (value === '') return;
 
   //console.log(`connection: ${connection} toUpdate: ${JSON.stringify(connectionToUpdate)}`)
-  console.log(`Updating connection ${id} on pipe ${pipeId} with key ${key} and value ${value}`);
+  //console.log(`Updating connection ${id} on pipe ${pipeId} with key ${key} and value ${value}`);
 
   // 更新オブジェクトを作成
   const updateObj: Partial<ErectorPipeConnection> = {};

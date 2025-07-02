@@ -32,7 +32,7 @@ function download() {
       rootTransform = {
         pipeId: rootPipeId,
         position: [rootInstance.position.x, rootInstance.position.y, rootInstance.position.z] as [number, number, number],
-        rotation: [rootInstance.quaternion.x, rootInstance.quaternion.y, rootInstance.quaternion.z, rootInstance.quaternion.w] as [number, number, number, number]
+        rotation: [rootInstance.rotation.x, rootInstance.rotation.y, rootInstance.rotation.z].map(v => v * 180 / Math.PI) as [number, number, number]
       }
     }
   }
@@ -81,7 +81,7 @@ function handleFileUpload(event: Event) {
       if (structure.rootTransform) {
         const rt = structure.rootTransform
         if (!rt.pipeId || !Array.isArray(rt.position) || rt.position.length !== 3 ||
-          !Array.isArray(rt.rotation) || rt.rotation.length !== 4) {
+          !Array.isArray(rt.rotation) || rt.rotation.length !== 3) {
           console.warn('Invalid rootTransform format, ignoring.')
           delete structure.rootTransform
         }

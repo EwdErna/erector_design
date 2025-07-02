@@ -10,6 +10,7 @@ import { GLTFLoader } from 'three/examples/jsm/Addons.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { ErectorPipe } from '~/types/erector_component';
 import { JointControls } from '~/utils/Erector/JointControls';
+import { PipeControls } from '~/utils/Erector/PipeControls';
 import { degreesToRadians } from '~/utils/angleUtils';
 
 const container = useTemplateRef("container")
@@ -19,9 +20,8 @@ let renderer: WebGLRenderer
 let camera: PerspectiveCamera
 let controls: OrbitControls
 let jointControls: JointControls
-let rootPipeId: string
+let unifiedPipeControls: PipeControls
 const erector = useErectorPipeJoint()
-const rootPipeObject: Ref<Object3D | undefined> = ref()
 
 function selectObject(event: MouseEvent) {
   const rect = container.value?.getBoundingClientRect()
@@ -43,9 +43,14 @@ function selectObject(event: MouseEvent) {
     const pipeObject = erector.pipes.find(p => p.id === rootObject.name)
     if (jointObject) {
       jointControls.setTarget(jointObject, rootObject as Mesh)
-    } else {
-      // Clear joint controls if not selecting a joint
+      unifiedPipeControls.clear()
+    } else if (pipeObject) {
+      unifiedPipeControls.setTarget(pipeObject, rootObject as Mesh)
       jointControls.clear()
+    } else {
+      // Clear all controls if not selecting a joint or pipe
+      jointControls.clear()
+      unifiedPipeControls.clear()
     }
     objectSelection.select(rootObject.name)
   }
@@ -130,6 +135,13 @@ const setupScene = () => {
   scene.add(jointControls.gizmoGroup)
   scene.add(jointControls.debugObjects)
 
+  unifiedPipeControls = new PipeControls(camera, renderer.domElement)
+  unifiedPipeControls.addEventListener('dragging-changed', e => {
+    controls.enabled = !e.value
+  })
+  scene.add(unifiedPipeControls.controlGroup)
+  scene.add(unifiedPipeControls.debugObjects)
+
   const gridHelper = new GridHelper(10, 10)
   scene.add(gridHelper)
 
@@ -137,9 +149,10 @@ const setupScene = () => {
   scene.add(axesHelper)
 
   erector.loadFromStructure(erector_structure)
-  rootPipeId = erector_structure.pipes[0].id
-  rootPipeObject.value = erector.instances.find(i => i.id === rootPipeId)?.obj
-  rootPipeObject.value?.rotation.set(0, degreesToRadians(40), 0)
+  // Apply initial rotation to the root pipe object
+  if (erector.rootPipeObject) {
+    erector.rootPipeObject.rotation.set(0, degreesToRadians(40), 0)
+  }
 
   const ambientLight = new AmbientLight(0xffffff, 0.5)
   scene.add(ambientLight)
@@ -150,20 +163,18 @@ const setupScene = () => {
 }
 const animate = (scene: Scene) => {
   if (!scene) return;
-  if (!erector.pipes.find(p => p.id === rootPipeId)) {
-    rootPipeObject.value = undefined
+  if (!erector.pipes.find(p => p.id === erector.rootPipeId)) {
     if (erector.pipes.length === 0) {
       //console.log("No pipes in erector")
     } else {
       console.log("rootPipeId not found in erector pipes, resetting to first instance")
-      rootPipeId = erector.instances[0].id
-      rootPipeObject.value = erector.instances.find(i => i.id === rootPipeId)?.obj
+      erector.rootPipeId = erector.instances[0].id
     }
   }
-  if (rootPipeObject.value) {
+  if (erector.rootPipeObject) {
     const calculatePosition = erector.calculateWorldPosition()
     calculatePosition({
-      id: rootPipeId, position: rootPipeObject.value?.position.clone() ?? new Vector3(), rotation: new Quaternion().setFromEuler(rootPipeObject.value?.rotation ?? new Euler(0, 0, 0))
+      id: erector.rootPipeId, position: erector.rootPipeObject?.position.clone() ?? new Vector3(), rotation: new Quaternion().setFromEuler(erector.rootPipeObject?.rotation ?? new Euler(0, 0, 0))
     })
   }
 
@@ -178,6 +189,7 @@ const animate = (scene: Scene) => {
 watch(() => objectSelection.object, (newSelection) => {
   if (!newSelection || newSelection === '') {
     jointControls?.clear()
+    unifiedPipeControls?.clear()
   }
 })
 
@@ -197,6 +209,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
   if (jointControls) jointControls.dispose()
+  if (unifiedPipeControls) unifiedPipeControls.dispose()
   if (controls) controls.dispose()
   if (renderer) renderer.dispose()
 })
