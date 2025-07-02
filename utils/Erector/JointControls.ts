@@ -1,4 +1,4 @@
-import { BufferGeometry, Camera, Controls, Euler, Group, Line, Mesh, MeshBasicMaterial, Plane, Quaternion, Raycaster, SphereGeometry, TorusGeometry, Vector2, Vector3, CylinderGeometry } from "three";
+import { BufferGeometry, Camera, Controls, Euler, Group, Line, Mesh, MeshBasicMaterial, Object3D, Plane, Quaternion, Raycaster, SphereGeometry, TorusGeometry, Vector2, Vector3, CylinderGeometry } from "three";
 import { definitions } from "@/utils/Erector/erectorComponentDefinition";
 import type { ErectorJoint, ErectorPipeConnection, ErectorPipe } from "~/types/erector_component";
 import { radiansToDegrees } from "~/utils/angleUtils";
@@ -390,7 +390,7 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
 
   /**
    * Calculate new position value for position slider
-   * Simplified approach similar to PipeControls
+   * Handles both j2p and p2j relationships correctly
    */
   private calculatePositionSliderValue(currentIntersection: Vector3): number {
     if (!this.dragging || !this.coordinateManager || !this.target) return 0;
@@ -408,16 +408,52 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
     }
 
     const actualPipeObject = this.dragging.userData.pipeObject;
-
-    // Convert current intersection to pipe's local space (similar to PipeControls approach)
-    const pipeWorldToLocal = actualPipeObject.worldToLocal.bind(actualPipeObject);
-    const currentLocalPos = pipeWorldToLocal(currentIntersection.clone());
-
-    // Get pipe length from userData
     const pipeLength = this.dragging.userData.pipeLength;
 
-    // Calculate position as ratio from start (0) to end (1) of the pipe
-    // Clamp the Z position to pipe bounds [0, pipe.length]
+    // Get relationship type to determine coordinate system approach
+    const relationshipType = this.getPipeJointRelationshipType();
+
+    if (relationshipType === 'j2p') {
+      // For j2p (joint determines pipe), calculate based on joint's coordinate system
+      // and the relative position along the pipe axis
+      return this.calculateJ2PPositionValue(currentIntersection, actualPipeObject, pipeLength);
+    } else {
+      // For p2j (pipe determines joint) or null, use the original pipe-based calculation
+      return this.calculateP2JPositionValue(currentIntersection, actualPipeObject, pipeLength);
+    }
+  }
+
+  /**
+   * Calculate position for j2p relationships (joint determines pipe position)
+   */
+  private calculateJ2PPositionValue(currentIntersection: Vector3, pipeObject: Object3D, pipeLength: number): number {
+    if (!this.dragStart || !this.dragging) return this.dragStartAngle;
+
+    const pipeWorldToLocal = pipeObject.worldToLocal.bind(pipeObject);
+
+    // Convert both drag start and current intersection to pipe local coordinates
+    const dragStartLocalPos = pipeWorldToLocal(this.dragStart.clone());
+    const currentLocalPos = pipeWorldToLocal(currentIntersection.clone());
+
+    // Calculate the difference along the pipe's Z-axis (pipe direction)
+    const deltaZ = dragStartLocalPos.z - currentLocalPos.z;
+
+    // Convert the Z difference to position change (normalized by pipe length)
+    const positionDelta = deltaZ / pipeLength;
+
+    // Apply the delta to the starting position
+    const newPosition = this.dragStartAngle + positionDelta;
+
+    // Clamp to valid range [0, 1]
+    return Math.max(0, Math.min(1, newPosition));
+  }
+
+  /**
+   * Calculate position for p2j relationships (pipe determines joint position)
+   */
+  private calculateP2JPositionValue(currentIntersection: Vector3, pipeObject: Object3D, pipeLength: number): number {
+    const pipeWorldToLocal = pipeObject.worldToLocal.bind(pipeObject);
+    const currentLocalPos = pipeWorldToLocal(currentIntersection.clone());
     const clampedZ = Math.max(0, Math.min(pipeLength, currentLocalPos.z));
     const newPosition = clampedZ / pipeLength;
 
@@ -436,8 +472,9 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
     // Update the connection position
     connections.updateConnection(connectionId, { position: newPosition });
 
-    // Update the position indicator
-    this.updatePositionIndicator(this.dragging, newPosition);
+    // Update the position indicator based on relationship type
+    const relationshipType = this.getPipeJointRelationshipType();
+    this.updatePositionIndicator(this.dragging, newPosition, relationshipType);
 
     // Store the new position in userData
     this.dragging.userData.currentPosition = newPosition;
@@ -447,12 +484,17 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
   /**
    * Update position indicator on the slider
    */
-  private updatePositionIndicator(sliderMesh: Mesh, newPosition: number) {
+  private updatePositionIndicator(sliderMesh: Mesh, newPosition: number, relationshipType?: 'j2p' | 'p2j' | null) {
     const indicator = sliderMesh.getObjectByName(`${sliderMesh.name}-indicator`);
     if (indicator) {
       const sliderLength = sliderMesh.userData.pipeLength;
-      // Position indicator along slider: 0 = start (-sliderLength/2), 1 = end (+sliderLength/2)
       const indicatorOffset = (newPosition - 0.5) * sliderLength;
+
+      if (relationshipType === 'j2p') {
+        // For j2p: move the slider, keep indicator fixed
+        sliderMesh.position.setY(-indicatorOffset);
+        // Reset indicator position relative to slider
+      }
       indicator.position.setY(indicatorOffset);
     }
   }
@@ -798,7 +840,7 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
     // Then, move along pipe direction so slider start is at pipe start (position 0)
     // Current joint position represents the midway connection position
     // We need to move back by (connection.position * pipe.length) to get to pipe start
-    const connectionPosition = connection.position || 0.5;
+    const connectionPosition = connection.position;
     const pipeStartOffset = pipeDirection.clone().multiplyScalar(-connectionPosition * pipe.length);
 
     // Finally, move forward by half slider length to center the slider on the pipe
@@ -823,7 +865,7 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
       pipeId: pipe.id,
       connectionId: connection.id,
       pipeLength: pipe.length,
-      currentPosition: connection.position || 0.5,
+      currentPosition: connection.position,
       pipeDirection: pipeDirection.toArray(),
       pipeObject: null // Will be set after finding the pipe object
     };
@@ -839,7 +881,7 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
     this.positionSliders.push(sliderMesh);
 
     // Create position indicator on the slider
-    this.createPositionIndicator(sliderMesh, connection.position || 0.5, sliderLength);
+    this.createPositionIndicator(sliderMesh, connection.position, sliderLength);
   }
 
   /**
