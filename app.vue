@@ -15,6 +15,9 @@
       </section>
     </main>
     <footer></footer>
+    <div class="overlay">
+      <InvalidConnections></InvalidConnections>
+    </div>
   </div>
 </template>
 
@@ -48,6 +51,12 @@
     .main {
       width: 50%;
     }
+  }
+
+  .overlay {
+    position: absolute;
+    bottom: 5px;
+    right: 5px;
   }
 }
 </style>
