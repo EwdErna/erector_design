@@ -582,9 +582,18 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
                   updated.push(pipe.id)
                   // Record j2p relationship (joint determines pipe position)
                   updatePipeJointRelationship(pipe.id, midway.jointId, midway.holeId, 'midway', 'j2p')
-                  const position = jointInstance.position.clone().add(hole.offset.clone().applyQuaternion(jointInstance.quaternion))
+
+                  // For j2p midway connections, we need to position the pipe so that the midway connection
+                  // aligns with the joint hole at the specified position along the pipe
                   const rotation = jointInstance.quaternion.clone().multiply(hole.dir.clone()
                     .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), degreesToRadians(midway.rotation))))
+
+                  // Calculate pipe position: joint position - (pipe direction * distance from pipe start to midway position)
+                  const pipeDirection = new Vector3(0, 0, 1).applyQuaternion(rotation)
+                  const distanceFromStart = pipe.length * (midway.position ?? 0) // Use position or default to start (0)
+                  const holeWorldPosition = jointInstance.position.clone().add(hole.offset.clone().applyQuaternion(jointInstance.quaternion))
+                  const position = holeWorldPosition.clone().sub(pipeDirection.clone().multiplyScalar(distanceFromStart))
+
                   pipeTransform.position.set(...position.toArray())
                   pipeTransform.rotation.set(...rotation.toArray())
                   // 座標を更新したのでもう離脱していい
