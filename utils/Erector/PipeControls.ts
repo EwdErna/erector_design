@@ -1,4 +1,4 @@
-import { BufferGeometry, Camera, Controls, Group, Line, Mesh, MeshBasicMaterial, Plane, Raycaster, SphereGeometry, TorusGeometry, Vector2, Vector3, CylinderGeometry, BoxGeometry } from "three";
+import { BufferGeometry, Camera, Controls, Group, Line, Mesh, MeshBasicMaterial, Object3D, Plane, Raycaster, SphereGeometry, TorusGeometry, Vector2, Vector3, CylinderGeometry, BoxGeometry } from "three";
 import type { ErectorPipe, ErectorPipeConnection, ErectorJoint } from "~/types/erector_component";
 import { radiansToDegrees } from "~/utils/angleUtils";
 
@@ -223,7 +223,7 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
         break
       case 'midway':
         // Check if position is relative (0-1) or absolute
-        const midwayPos = connection.position || 0.5;
+        const midwayPos = connection.position;
         const absolutePosition = midwayPos <= 1.0 ? midwayPos * this.target.pipe.length : midwayPos;
         position = new Vector3(0, 0, absolutePosition)
         break
@@ -320,7 +320,7 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
       holeId: connection.holeId,
       joint,
       connection,
-      position: connection.position || 0.5
+      position: connection.position
     }
 
     positionGizmo.userData = positionData
@@ -512,6 +512,56 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
   private handlePositionDrag(currentIntersection: Vector3, data: PositionGizmoData) {
     if (!this.target || !this.dragStart || !this.coordinateManager) return;
 
+    // Get relationship type to determine coordinate system approach
+    const relationshipType = this.getPipeJointRelationshipType(data);
+
+    let newPosition: number;
+
+    if (relationshipType === 'j2p') {
+      // For j2p (joint determines pipe), calculate based on relative movement
+      newPosition = this.calculateJ2PPositionValue(currentIntersection, data);
+    } else {
+      // For p2j (pipe determines joint) or null, use the original pipe-based calculation
+      newPosition = this.calculateP2JPositionValue(currentIntersection, data);
+    }
+
+    this.applyPositionToConnection(newPosition, data);
+  }
+
+  /**
+   * Calculate position for j2p relationships (joint determines pipe position)
+   * In pipe controls, this means calculating based on relative movement from drag start
+   */
+  private calculateJ2PPositionValue(currentIntersection: Vector3, data: PositionGizmoData): number {
+    if (!this.dragStart || !this.target) return this.dragStartValue;
+
+    const pipeWorldToLocal = this.target.object.worldToLocal.bind(this.target.object);
+
+    // Convert both drag start and current intersection to pipe local coordinates
+    const dragStartLocalPos = pipeWorldToLocal(this.dragStart.clone());
+    const currentLocalPos = pipeWorldToLocal(currentIntersection.clone());
+
+    // Calculate the difference along the pipe's Z-axis (pipe direction)
+    // For j2p in pipe controls, reverse the direction to match expected behavior
+    const deltaZ = dragStartLocalPos.z - currentLocalPos.z;
+
+    // Convert the Z difference to position change (normalized by pipe length)
+    const positionDelta = deltaZ / this.target.pipe.length;
+
+    // Apply the delta to the starting position
+    const newPosition = this.dragStartValue + positionDelta;
+
+    // Clamp to valid range [0, 1]
+    return Math.max(0, Math.min(1, newPosition));
+  }
+
+  /**
+   * Calculate position for p2j relationships (pipe determines joint position)
+   * This is the original pipe-based calculation
+   */
+  private calculateP2JPositionValue(currentIntersection: Vector3, data: PositionGizmoData): number {
+    if (!this.target) return 0;
+
     // Convert current intersection to pipe's local space
     const pipeWorldToLocal = this.target.object.worldToLocal.bind(this.target.object);
     const currentLocalPos = pipeWorldToLocal(currentIntersection.clone());
@@ -521,7 +571,7 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
     const clampedZ = Math.max(0, Math.min(this.target.pipe.length, currentLocalPos.z));
     const newPosition = clampedZ / this.target.pipe.length;
 
-    this.applyPositionToConnection(newPosition, data);
+    return newPosition;
   }
 
   private getCurrentMouseIntersection(event: MouseEvent): Vector3 | null {
@@ -647,10 +697,17 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
     this.currentValue = position;
 
     // Update the position gizmo and associated connection gizmo positions
+    // For pipe controls, the visual feedback is primarily through gizmo position updates
     this.updateConnectionGizmoPositions(data, position);
+
+    // Additional visual feedback based on relationship type could be added here
+    // For consistency with JointControls, but pipe controls work primarily with gizmo positions
+    const relationshipType = this.getPipeJointRelationshipType(data);
+    // In pipe controls, both j2p and p2j use the same visual approach since
+    // the pipe is the primary reference frame
   }
 
-  private getPipeJointRelationshipType(data: ConnectionGizmoData): 'j2p' | 'p2j' | null {
+  private getPipeJointRelationshipType(data: ConnectionGizmoData | PositionGizmoData): 'j2p' | 'p2j' | null {
     if (!this.target) return null;
 
     const connections = useErectorPipeJoint();
