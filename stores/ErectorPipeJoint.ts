@@ -3,7 +3,7 @@ import { Euler, Mesh, Quaternion, Vector3, MeshPhongMaterial, Object3D, Scene, B
 import { GLTFLoader } from 'three/examples/jsm/Addons.js'
 import type { ErectorJoint, ErectorJointHole, ErectorPipe, ErectorPipeConnection } from '~/types/erector_component'
 import { genPipe } from '~/utils/Erector/pipe'
-import { degreesToRadians, radiansToDegrees } from '~/utils/angleUtils'
+import { degreesToRadians, radiansToDegrees, roundAngleDegrees } from '~/utils/angleUtils'
 export type transform = { id: string, position: Vector3, rotation: Quaternion }
 import erectorComponentDefinition from '~/data/erector_component.json'
 export type PipeJointRelationship = {
@@ -443,9 +443,9 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
         return undefined
       }
       return [
-        radiansToDegrees(instance.obj.rotation.x),
-        radiansToDegrees(instance.obj.rotation.y),
-        radiansToDegrees(instance.obj.rotation.z)
+        roundAngleDegrees(radiansToDegrees(instance.obj.rotation.x)),
+        roundAngleDegrees(radiansToDegrees(instance.obj.rotation.y)),
+        roundAngleDegrees(radiansToDegrees(instance.obj.rotation.z))
       ]
     },
 
@@ -658,7 +658,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
                   const position = pipeTransform.position.clone().add(rotatedHoleOffset.clone().negate())
                   const target = instances.find(i => i.id === joint.id)?.obj;
                   target?.position.set(...position.toArray())
-                  target?.rotation.setFromQuaternion(rotation)
+                  target?.quaternion.copy(rotation)
                 }
               }
             }
@@ -697,7 +697,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
                   const position = pipeTransform.position.clone().add(new Vector3(0, 0, 1).applyQuaternion(pipeTransform.rotation).multiplyScalar(pipe.length)).add(hole.offset.clone().negate().applyQuaternion(rotation))
                   const target = instances.find(i => i.id === joint.id)?.obj;
                   target?.position.set(...position.toArray())
-                  target?.rotation.setFromQuaternion(rotation)
+                  target?.quaternion.copy(rotation)
                 }
               }
             }
@@ -741,7 +741,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
                   const position = pipeTransform.position.clone().add(new Vector3(0, 0, 1).applyQuaternion(pipeTransform.rotation).multiplyScalar(pipe.length * conn.position)).add(hole.offset.clone().applyQuaternion(rotation))
                   const target = instances.find(i => i.id === joint.id)?.obj;
                   target?.position.set(...position.toArray())
-                  target?.rotation.setFromQuaternion(rotation)
+                  target?.quaternion.copy(rotation)
                 }
               }
             }
@@ -754,7 +754,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
         if (!root) return
         const rootObject = this.instances.find(i => i.id === rootTransform.id)?.obj
         rootObject?.position.set(...rootTransform.position.toArray())
-        rootObject?.rotation.setFromQuaternion(rootTransform.rotation)
+        rootObject?.quaternion.copy(rootTransform.rotation)
         updated.push(root.id)
         nextUpdate.push(root.id)
         while (nextUpdate.length > 0) {

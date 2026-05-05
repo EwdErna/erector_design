@@ -38,3 +38,23 @@ export function normalizeRadians(radians: number): number {
   return normalized > Math.PI ? normalized - 2 * Math.PI :
     normalized < -Math.PI ? normalized + 2 * Math.PI : normalized
 }
+
+/**
+ * 角度を正規化（-180 to 180 度の範囲に収める）
+ * connection.rotation の無制限増大を防ぐために使用する
+ */
+export function normalizeAngle180(degrees: number): number {
+  let n = degrees % 360
+  if (n > 180) n -= 360
+  if (n < -180) n += 360
+  return n
+}
+
+/**
+ * 角度の浮動小数誤差を除去（小数第10位で丸め）
+ * calculateWorldPosition がクォータニオンを書き戻す際に生じる
+ * オイラー再分解ノイズ（例: -5e-15°、39.9999999...°→40°）を消す
+ */
+export function roundAngleDegrees(degrees: number): number {
+  return Math.round(degrees * 1e10) / 1e10
+}

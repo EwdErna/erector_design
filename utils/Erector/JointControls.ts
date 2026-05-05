@@ -1,87 +1,8 @@
 import { BufferGeometry, Camera, Controls, Euler, Group, Line, Mesh, MeshBasicMaterial, Object3D, Plane, Quaternion, Raycaster, SphereGeometry, TorusGeometry, Vector2, Vector3, CylinderGeometry } from "three";
 import { definitions } from "@/utils/Erector/erectorComponentDefinition";
 import type { ErectorJoint, ErectorPipeConnection, ErectorPipe } from "~/types/erector_component";
-import { radiansToDegrees } from "~/utils/angleUtils";
-
-/**
- * Type guard to check if an object is a Mesh with MeshBasicMaterial
- */
-function isMeshWithBasicMaterial(obj: any): obj is Mesh<BufferGeometry, MeshBasicMaterial> {
-  return obj instanceof Mesh &&
-    obj.material instanceof MeshBasicMaterial &&
-    !Array.isArray(obj.material);
-}
-
-/**
- * Coordinate system manager for joint controls
- * Clearly separates different coordinate systems and their transformations
- */
-class CoordinateManager {
-  constructor(
-    private jointObject: Mesh,  // The joint object in world space
-    private gizmoGroup: Group   // The gizmo group (joint local space)
-  ) { }
-
-  /**
-   * Convert a direction from joint local space to world space
-   */
-  jointLocalToWorldDirection(localDirection: Vector3): Vector3 {
-    return localDirection.clone().applyQuaternion(this.jointObject.quaternion).normalize();
-  }
-
-  /**
-   * Convert a position from gizmo local space to world space
-   */
-  gizmoLocalToWorld(localPosition: Vector3): Vector3 {
-    return this.gizmoGroup.localToWorld(localPosition.clone());
-  }
-
-  /**
-   * Convert a world position to relative position from gizmo
-   */
-  worldToGizmoRelative(worldPosition: Vector3, gizmoLocalPosition: Vector3): Vector3 {
-    return worldPosition.clone().sub(this.gizmoLocalToWorld(gizmoLocalPosition));
-  }
-}
-
-/**
- * Rotation angle calculator
- * Handles the complex angle calculation logic separately
- */
-class RotationCalculator {
-  /**
-   * Calculate rotation angle between two vectors around a normal
-   * Uses scalar triple product to get signed angle
-   * @param startVector - Starting position vector (relative to rotation center)
-   * @param currentVector - Current position vector (relative to rotation center)
-   * @param normal - Rotation axis normal in world space
-   * @returns Signed rotation angle in radians
-   */
-  static calculateSignedAngle(startVector: Vector3, currentVector: Vector3, normal: Vector3): number {
-    // Scalar triple product: normal · (start × current)
-    // This gives us |start||current|sin(θ) with correct sign
-    const crossProduct = startVector.clone().cross(currentVector);
-    const sinTheta = normal.clone().dot(crossProduct);
-
-    // Dot product gives us |start||current|cos(θ)
-    const cosTheta = startVector.clone().dot(currentVector);
-
-    // atan2 handles the sign correctly and gives us the full range [-π, π]
-    return Math.atan2(sinTheta, cosTheta);
-  }
-
-  /**
-   * Apply relationship-based rotation direction
-   * @param angle - Base angle in radians
-   * @param relationshipType - Type of pipe-joint relationship
-   * @returns Adjusted angle considering relationship direction
-   */
-  static applyRelationshipDirection(angle: number, relationshipType: 'j2p' | 'p2j' | null): number {
-    // For p2j relationships, reverse the rotation direction
-    const multiplier = relationshipType === 'p2j' ? -1 : 1;
-    return angle * multiplier;
-  }
-}
+import { radiansToDegrees, normalizeAngle180 } from "~/utils/angleUtils";
+import { isMeshWithBasicMaterial, CoordinateManager, calculateSignedAngle, applyRelationshipDirection, disposeDebugObjects, updateLineGeometry } from "./ControlsShared";
 
 export class JointControls extends Controls<{ change: { value: boolean }, 'dragging-changed': { value: boolean } }> {
   gizmoGroup: Group = new Group()
@@ -101,6 +22,8 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
   dragCurrent: Vector3 | null = null;
   draggingLine: Line | null = null;
   currentAngle: number = 0;
+  private cachedWorldNormal: Vector3 | null = null;
+  private gizmoWorldPosAtStart: Vector3 | null = null;
 
   // Coordinate and calculation helpers
   private coordinateManager: CoordinateManager | null = null;
@@ -189,7 +112,7 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
   }
   clear() {
     // Properly dispose of debug objects before clearing
-    this.disposeDebugObjects()
+    disposeDebugObjects(this.debugObjects)
 
     this.gizmoGroup.clear()
     this.debugObjects.clear()
@@ -206,6 +129,8 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
     this.dragStart = null
     this.dragCurrent = null
     this.draggingLine = null
+    this.cachedWorldNormal = null
+    this.gizmoWorldPosAtStart = null
   }
 
   onMouseDown(event: MouseEvent) {
@@ -275,15 +200,19 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
   private setupDraggingCoordinates(gizmo: Mesh<BufferGeometry, MeshBasicMaterial>, intersectionPoint: Vector3) {
     if (!this.target || !this.coordinateManager) return;
 
-    // Get normal vector in world space (joint local -> world)
+    // Get normal vector in world space (joint local -> world) - cached once at drag start
     const gizmoLocalNormal = new Vector3().fromArray(gizmo.userData.normal);
-    const worldNormal = this.coordinateManager.jointLocalToWorldDirection(gizmoLocalNormal);
+    const worldNormal = this.coordinateManager.localToWorldDirection(gizmoLocalNormal);
+    this.cachedWorldNormal = worldNormal.clone();
 
-    // Calculate drag start vector (world intersection -> gizmo world position)
-    this.dragStart = this.coordinateManager.worldToGizmoRelative(intersectionPoint, gizmo.position);
+    // Cache gizmo world position at drag start for consistent coordinate frame
+    const gizmoWorldPosition = this.coordinateManager.groupLocalToWorld(gizmo.position);
+    this.gizmoWorldPosAtStart = gizmoWorldPosition.clone();
+
+    // Store drag start as world-space vector from gizmo center
+    this.dragStart = intersectionPoint.clone().sub(gizmoWorldPosition);
 
     // Create dragging plane (perpendicular to normal, passing through gizmo)
-    const gizmoWorldPosition = this.coordinateManager.gizmoLocalToWorld(gizmo.position);
     this.draggingPlane = new Plane().setFromNormalAndCoplanarPoint(worldNormal, gizmoWorldPosition);
 
     // Create debug line
@@ -302,7 +231,7 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
 
     // Create dragging plane with normal perpendicular to pipe direction (similar to PipeControls Y-axis approach)
     const pipeDirection = new Vector3().fromArray(gizmo.userData.pipeDirection);
-    const worldPipeDirection = this.coordinateManager.jointLocalToWorldDirection(pipeDirection);
+    const worldPipeDirection = this.coordinateManager.localToWorldDirection(pipeDirection);
 
     // Use a perpendicular direction to pipe as plane normal
     let planeNormal = new Vector3(0, 1, 0); // Start with Y-axis
@@ -315,7 +244,7 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
     // Make plane normal perpendicular to pipe direction
     planeNormal = planeNormal.clone().cross(worldPipeDirection).normalize();
 
-    const gizmoWorldPosition = this.coordinateManager.gizmoLocalToWorld(gizmo.position);
+    const gizmoWorldPosition = this.coordinateManager.groupLocalToWorld(gizmo.position);
     this.draggingPlane = new Plane().setFromNormalAndCoplanarPoint(planeNormal, gizmoWorldPosition);
 
     // Create debug line
@@ -365,25 +294,21 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
    * Calculate current rotation angle using clear coordinate system logic
    */
   private calculateCurrentRotation(currentIntersection: Vector3): number {
-    if (!this.dragging || !this.dragStart || !this.coordinateManager || !this.target) return 0;
+    if (!this.dragging || !this.dragStart || !this.gizmoWorldPosAtStart || !this.cachedWorldNormal || !this.target) return 0;
 
-    // Convert current intersection to relative position (same coordinate system as dragStart)
-    this.dragCurrent = this.coordinateManager.worldToGizmoRelative(currentIntersection, this.dragging.position);
+    // Use fixed gizmo world position and normal from drag start (avoids coordinate frame drift)
+    this.dragCurrent = currentIntersection.clone().sub(this.gizmoWorldPosAtStart);
 
-    // Get world normal for rotation axis
-    const gizmoLocalNormal = new Vector3().fromArray(this.dragging.userData.normal);
-    const worldNormal = this.coordinateManager.jointLocalToWorldDirection(gizmoLocalNormal);
-
-    // Calculate angle using our dedicated rotation calculator
-    const baseAngle = RotationCalculator.calculateSignedAngle(
-      this.dragStart,     // Start vector (relative to gizmo)
-      this.dragCurrent,   // Current vector (relative to gizmo)  
-      worldNormal         // Rotation axis (world space)
+    // Calculate angle using cached rotation axis
+    const baseAngle = calculateSignedAngle(
+      this.dragStart,
+      this.dragCurrent,
+      this.cachedWorldNormal
     );
 
     // Apply relationship direction (for pipe-joint interaction)
     const relationshipType = this.getPipeJointRelationshipType();
-    const adjustedAngle = RotationCalculator.applyRelationshipDirection(baseAngle, relationshipType);
+    const adjustedAngle = applyRelationshipDirection(baseAngle, relationshipType);
 
     return this.dragStartAngle + radiansToDegrees(adjustedAngle);
   }
@@ -512,7 +437,7 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
     }
 
     // Update dragging line
-    const gizmoWorldPosition = this.coordinateManager.gizmoLocalToWorld(this.dragging.position);
+    const gizmoWorldPosition = this.coordinateManager.groupLocalToWorld(this.dragging.position);
     if (!this.draggingLine) {
       const geometry = new BufferGeometry().setFromPoints([gizmoWorldPosition, currentIntersection]);
       this.draggingLine = new Line(geometry, new MeshBasicMaterial({
@@ -522,7 +447,7 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
       }));
       this.debugObjects.add(this.draggingLine);
     } else {
-      this.updateLineGeometry(this.draggingLine, [gizmoWorldPosition, currentIntersection]);
+      updateLineGeometry(this.draggingLine, [gizmoWorldPosition, currentIntersection]);
     }
   }
   onMouseUp(event: MouseEvent) {
@@ -542,7 +467,7 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
       }
 
       // Properly dispose of debug objects before clearing
-      this.disposeDebugObjects();
+      disposeDebugObjects(this.debugObjects);
       this.debugObjects.clear();
 
       this.draggingPlane = null;
@@ -554,37 +479,6 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
       this.dispatchEvent({ type: 'dragging-changed', value: false });
       this.dispatchEvent({ type: 'change', value: false });
     }
-  }
-
-  /**
-   * Properly dispose of debug objects to prevent memory leaks
-   */
-  private disposeDebugObjects() {
-    this.debugObjects.traverse((child) => {
-      if (child instanceof Mesh) {
-        if (child.geometry) {
-          child.geometry.dispose()
-        }
-        if (child.material) {
-          if (Array.isArray(child.material)) {
-            child.material.forEach(material => material.dispose())
-          } else {
-            child.material.dispose()
-          }
-        }
-      } else if (child instanceof Line) {
-        if (child.geometry) {
-          child.geometry.dispose()
-        }
-        if (child.material) {
-          if (Array.isArray(child.material)) {
-            child.material.forEach(material => material.dispose())
-          } else {
-            child.material.dispose()
-          }
-        }
-      }
-    })
   }
 
   /**
@@ -605,18 +499,6 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
       this.debugObjects.remove(line)
     }
     return null
-  }
-
-  /**
-   * Update line geometry safely, disposing old geometry when needed
-   */
-  private updateLineGeometry(line: Line, points: Vector3[]) {
-    // Dispose of the old geometry
-    if (line.geometry) {
-      line.geometry.dispose()
-    }
-    // Create new geometry
-    line.geometry = new BufferGeometry().setFromPoints(points)
   }
 
   /**
@@ -704,7 +586,7 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
     const connection = this.findTargetConnection();
     if (connection.targetConnection) {
       const connections = useErectorPipeJoint();
-      connections.updateConnection(connection.targetConnection.id, { rotation: rotationAngle });
+      connections.updateConnection(connection.targetConnection.id, { rotation: normalizeAngle180(rotationAngle) });
     }
 
     this.currentAngle = rotationAngle;

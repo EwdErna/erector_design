@@ -1,6 +1,6 @@
 import { BufferGeometry, Camera, Controls, Group, Line, Mesh, MeshBasicMaterial, Object3D, Plane, Raycaster, SphereGeometry, TorusGeometry, Vector2, Vector3, CylinderGeometry, BoxGeometry } from "three";
 import type { ErectorPipe, ErectorPipeConnection, ErectorJoint } from "~/types/erector_component";
-import { radiansToDegrees } from "~/utils/angleUtils";
+import { radiansToDegrees, normalizeAngle180 } from "~/utils/angleUtils";
 
 /**
  * Type guard to check if an object is a Mesh with MeshBasicMaterial
@@ -127,6 +127,8 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
   currentValue: number = 0
 
   private coordinateManager: CoordinateManager | null = null
+  private cachedWorldNormal: Vector3 | null = null
+  private gizmoWorldPosAtStart: Vector3 | null = null
 
   constructor(camera: Camera, domElement: HTMLElement) {
     super(camera, domElement);
@@ -350,6 +352,8 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
     this.dragging = null
     this.draggingPlane = null
     this.dragStart = null
+    this.cachedWorldNormal = null
+    this.gizmoWorldPosAtStart = null
   }
 
   onMouseDown(event: MouseEvent) {
@@ -427,11 +431,15 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
 
     const gizmoLocalNormal = new Vector3().fromArray(data.normal);
     const worldNormal = this.coordinateManager.pipeLocalToWorldDirection(gizmoLocalNormal);
-
-    this.dragStart = this.coordinateManager.worldToControlRelative(intersectionPoint, gizmo.position);
-    this.dragStartValue = data.rotation;
+    this.cachedWorldNormal = worldNormal.clone();
 
     const gizmoWorldPosition = this.coordinateManager.controlLocalToWorld(gizmo.position);
+    this.gizmoWorldPosAtStart = gizmoWorldPosition.clone();
+
+    // Store drag start as world-space vector from gizmo center
+    this.dragStart = intersectionPoint.clone().sub(gizmoWorldPosition);
+    this.dragStartValue = data.rotation;
+
     this.draggingPlane = new Plane().setFromNormalAndCoplanarPoint(worldNormal, gizmoWorldPosition);
 
     this.createDebugLine(gizmoWorldPosition, intersectionPoint);
@@ -490,13 +498,12 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
   }
 
   private handleRotationDrag(currentIntersection: Vector3, data: ConnectionGizmoData) {
-    if (!this.target || !this.dragStart || !this.coordinateManager || !this.dragging) return;
+    if (!this.target || !this.dragStart || !this.gizmoWorldPosAtStart || !this.cachedWorldNormal || !this.dragging) return;
 
-    const dragCurrent = this.coordinateManager.worldToControlRelative(currentIntersection, this.dragging.position);
-    const gizmoLocalNormal = new Vector3().fromArray(data.normal);
-    const worldNormal = this.coordinateManager.pipeLocalToWorldDirection(gizmoLocalNormal);
+    // Use fixed reference point and normal from drag start (avoids coordinate frame drift)
+    const dragCurrent = currentIntersection.clone().sub(this.gizmoWorldPosAtStart);
 
-    const baseAngle = ControlCalculators.calculateSignedAngle(this.dragStart, dragCurrent, worldNormal);
+    const baseAngle = ControlCalculators.calculateSignedAngle(this.dragStart, dragCurrent, this.cachedWorldNormal);
     const relationshipType = this.getPipeJointRelationshipType(data);
     let adjustedAngle = ControlCalculators.applyRelationshipDirection(baseAngle, relationshipType);
 
@@ -685,7 +692,7 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
 
   private applyRotationToConnection(rotationAngle: number, data: ConnectionGizmoData) {
     const connections = useErectorPipeJoint();
-    connections.updateConnection(data.connection.id, { rotation: rotationAngle });
+    connections.updateConnection(data.connection.id, { rotation: normalizeAngle180(rotationAngle) });
     this.currentValue = rotationAngle;
   }
 
