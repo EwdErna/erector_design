@@ -35,10 +35,34 @@ type InvalidConnection = {
     expected: Vector3
     diff: number
   }
+  conflictType?: 'constraint'
+  conflictingConnectionId?: string
+  conflictingSide?: 'start' | 'end' | 'midway'
 }
 
 // validateConnections のスケジューリング用（ドラッグ中の連続呼び出しをデバウンス）
 let _validationPendingId: number | null = null
+
+/**
+ * 指定ジョイントに接続している全コネクションを返すヘルパー
+ */
+function getAllConnectionsToJoint(pipes: ErectorPipe[], jointId: string): Array<{ connectionId: string; pipeId: string; side: 'start' | 'end' | 'midway' }> {
+  const result: Array<{ connectionId: string; pipeId: string; side: 'start' | 'end' | 'midway' }> = []
+  for (const pipe of pipes) {
+    if (pipe.connections.start?.jointId === jointId) {
+      result.push({ connectionId: pipe.connections.start.id, pipeId: pipe.id, side: 'start' })
+    }
+    if (pipe.connections.end?.jointId === jointId) {
+      result.push({ connectionId: pipe.connections.end.id, pipeId: pipe.id, side: 'end' })
+    }
+    for (const conn of pipe.connections.midway) {
+      if (conn.jointId === jointId) {
+        result.push({ connectionId: conn.id, pipeId: pipe.id, side: 'midway' })
+      }
+    }
+  }
+  return result
+}
 
 export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
   state: () => ({
@@ -50,6 +74,8 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
     invalidConnections: [] as InvalidConnection[],
     rootPipeId: '' as string,
     debugArrows: [] as ArrowHelper[], // デバッグ用の矢印オブジェクト
+    lastModifiedConnectionId: null as string | null,
+    autoResolveConflicts: false as boolean,
   }),
   actions: {
     addPipe(scene: Scene, diameter: number, length: number, id?: string) {//pipeの存在だけを追加
@@ -176,6 +202,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       }
 
       // 変更を加えたので再validate（ドラッグ中の連続呼び出しを間引く）
+      this.lastModifiedConnectionId = id
       this.scheduleValidation()
     },
     removeConnection(id: string) {
@@ -861,10 +888,69 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
           }
         })
       })
+
+      // 競合検出: 同じジョイントを複数の接続が参照し位置矛盾が生じているケース
+      errors.forEach(error => {
+        const otherConns = getAllConnectionsToJoint(this.pipes, error.jointId)
+          .filter(c => c.connectionId !== error.id)
+        if (otherConns.length > 0) {
+          error.conflictType = 'constraint'
+          error.conflictingConnectionId = otherConns[0].connectionId
+          error.conflictingSide = otherConns[0].side
+        }
+      })
+
       this.invalidConnections = errors
+
+      // 自動解決モードが有効な場合、constraint競合を自動解決する
+      if (this.autoResolveConflicts) {
+        errors.filter(e => e.conflictType === 'constraint').forEach(error => {
+          if (this.lastModifiedConnectionId === error.id) {
+            // 最後に動かした接続が「負け」側に判定されている → 競合相手を更新する
+            if (error.conflictingSide === 'midway' && error.conflictingConnectionId) {
+              this.resolveByUpdatePosition(error.conflictingConnectionId)
+            }
+          } else {
+            // 通常ケース: エラー（負け側）が midway なら位置を更新して接続を維持する
+            if (error.side === 'midway') {
+              this.resolveByUpdatePosition(error.id)
+            }
+          }
+        })
+      }
 
       // デバッグ用: 無効な接続を可視化
       this.visualizeInvalidConnections()
+    },
+    resolveByDisconnect(connectionId: string) {
+      this.removeConnection(connectionId)
+      this.validateConnections()
+    },
+    resolveByUpdatePosition(connectionId: string) {
+      // midway 接続のみ有効（start/end はパイプ端点固定のため位置を変えられない）
+      const pipe = this.pipes.find(p => p.connections.midway.some(c => c.id === connectionId))
+      if (!pipe) return
+      const conn = pipe.connections.midway.find(c => c.id === connectionId)
+      if (!conn) return
+
+      const joint = this.joints.find(j => j.id === conn.jointId)
+      if (!joint) return
+      const hole = joint.holes[conn.holeId]
+      if (!hole) return
+
+      const jointInstance = this.instances.find(i => i.id === conn.jointId)?.obj
+      const pipeInstance = this.instances.find(i => i.id === pipe.id)?.obj
+      if (!jointInstance || !pipeInstance) return
+
+      // ジョイントの穴のワールド座標をパイプ軸に射影して新しい position (0〜1) を求める
+      const holeWorldPos = jointInstance.position.clone()
+        .add(hole.offset.clone().applyQuaternion(jointInstance.quaternion))
+      const pipeStart = pipeInstance.position.clone()
+      const pipeDir = new Vector3(0, 0, 1).applyQuaternion(pipeInstance.quaternion)
+      const dist = holeWorldPos.clone().sub(pipeStart).dot(pipeDir)
+      const newPosition = Math.max(0, Math.min(1, dist / pipe.length))
+
+      this.updateConnection(connectionId, { position: newPosition })
     },
     removeJoint(jointId: string) {
       // 削除対象のジョイントを使用している全てのコネクションを収集して削除
