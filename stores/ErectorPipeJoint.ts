@@ -37,6 +37,9 @@ type InvalidConnection = {
   }
 }
 
+// validateConnections のスケジューリング用（ドラッグ中の連続呼び出しをデバウンス）
+let _validationPendingId: number | null = null
+
 export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
   state: () => ({
     pipes: [] as ErectorPipe[],
@@ -172,10 +175,9 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
         pipe.connections.midway[connection] = { ...connectionBeforeUpdate, ...connectionToUpdate }
       }
 
-      // 変更を加えたので再validate
-      this.validateConnections()
+      // 変更を加えたので再validate（ドラッグ中の連続呼び出しを間引く）
+      this.scheduleValidation()
     },
-    removeConnection(id: string) {
       const pipe = this.pipes.find(p => p.connections.start?.id === id || p.connections.end?.id === id || p.connections.midway.some(conn => conn.id === id))
       if (!pipe) return
 
@@ -691,8 +693,21 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
         }
       }
     },
+    /**
+     * ドラッグ操作など連続呼び出しされる場面で使用する。
+     * requestAnimationFrame でバリデーションを1フレーム後に遅延し、
+     * 同一フレーム内の重複呼び出しをキャンセルすることで処理を間引く。
+     */
+    scheduleValidation() {
+      if (_validationPendingId !== null) {
+        cancelAnimationFrame(_validationPendingId)
+      }
+      _validationPendingId = requestAnimationFrame(() => {
+        _validationPendingId = null
+        this.validateConnections()
+      })
+    },
     validateConnections() {
-      // コネクションの整合性を検証する
       const errors: InvalidConnection[] = []
 
       this.pipes.forEach(pipe => {
