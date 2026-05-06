@@ -30,7 +30,7 @@
           <h4>Start Connection</h4>
           <button v-if="!connStart"
             @click="addConnectionToSelected('start')">add</button>
-          <button v-if="connStart" @click="selectedPipe.connections.start = undefined">remove</button>
+          <button v-if="connStart" @click="removeConnectionById(connStart.id)">remove</button>
         </div>
         <div v-if="connStart">
           <div>Joint ID: <select :value="connStart.jointId"
@@ -56,7 +56,7 @@
           <button v-if="!connEnd" @click="addConnectionToSelected('end')">
             add
           </button>
-          <button v-if="connEnd" @click="selectedPipe.connections.end = undefined">remove</button>
+          <button v-if="connEnd" @click="removeConnectionById(connEnd.id)">remove</button>
         </div>
         <div v-if="connEnd">
           <div>Joint ID: <select :value="connEnd.jointId"
@@ -82,7 +82,7 @@
           <button @click="addConnectionToSelected('midway')">add</button>
         </div>
         <div v-if="connMidway" v-for="conn, i in connMidway" :key="i">
-          <div><button @click="connMidway.splice(i, 1)">remove</button></div>
+          <div><button @click="removeConnectionById(conn.id)">remove</button></div>
           <div>Joint ID: <select :value="conn.jointId"
               @change="updateConnection($event, selectedPipe.id, conn.id, 'jointId')">
               <option v-for="joint in erector.joints" :value="joint.id">{{ joint.id }} / {{ joint.name }}</option>
@@ -316,6 +316,11 @@ watch([connStart, connEnd, connMidway], () => {
 function addConnectionToSelected(side: 'start' | 'end' | 'midway') {
   if (!selectedPipe.value || !erector.joints[0]) return
   erector.addConnection(selectedPipe.value.id, erector.joints[0].id, 0, side)
+  erector.validateConnections()
+}
+
+function removeConnectionById(id: string) {
+  erector.removeConnection(id)
   erector.validateConnections()
 }
 
