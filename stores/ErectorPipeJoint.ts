@@ -450,65 +450,6 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
     },
 
     /**
-     * オブジェクトの手動移動後に依存関係を再計算する
-     * パイプやジョイントの位置が手動で変更された場合、接続されたオブジェクトの配置を更新する
-     * @param id 変更されたオブジェクトのID
-     */
-    recalculateObjectDependencies(id: string) {
-      // オブジェクトの種類を判定
-      const pipe = this.pipes.find(p => p.id === id)
-      const joint = this.joints.find(j => j.id === id)
-
-      if (pipe) {
-        // パイプが移動された場合、接続されたジョイントの位置を再計算
-        //console.log(`Recalculating dependencies for pipe ${id}`)
-        this.recalculatePipeDependencies(pipe)
-      } else if (joint) {
-        // ジョイントが移動された場合、接続されたパイプの位置を再計算
-        //console.log(`Recalculating dependencies for joint ${id}`)
-        this.recalculateJointDependencies(joint)
-      }
-
-      // レンダリングカウントを増やして更新をトリガー
-      this.renderCount++
-    },
-
-    /**
-     * パイプの依存関係を再計算（私的メソッド）
-     */
-    recalculatePipeDependencies(pipe: ErectorPipe) {
-      // パイプの移動により影響を受けるジョイントを更新
-      // このメソッドは worldPosition getter の計算ロジックを使用
-      const dependencies = []
-
-      if (pipe.connections.start) {
-        dependencies.push({ jointId: pipe.connections.start.jointId, connectionType: 'start' })
-      }
-      if (pipe.connections.end) {
-        dependencies.push({ jointId: pipe.connections.end.jointId, connectionType: 'end' })
-      }
-      pipe.connections.midway.forEach(conn => {
-        dependencies.push({ jointId: conn.jointId, connectionType: 'midway' })
-      })
-
-      //console.log(`Pipe ${pipe.id} has ${dependencies.length} joint dependencies`)
-    },
-
-    /**
-     * ジョイントの依存関係を再計算（私的メソッド）
-     */
-    recalculateJointDependencies(joint: ErectorJoint) {
-      // ジョイントの移動により影響を受けるパイプを更新
-      const connectedPipes = this.pipes.filter(pipe => {
-        return (pipe.connections.start?.jointId === joint.id) ||
-          (pipe.connections.end?.jointId === joint.id) ||
-          pipe.connections.midway.some(conn => conn.jointId === joint.id)
-      })
-
-      //console.log(`Joint ${joint.id} affects ${connectedPipes.length} pipes`)
-    },
-
-    /**
      * Calculate world positions for all pipes and joints based on their relationships
      * This was moved from getters to actions to enable proper type safety
      */
