@@ -43,11 +43,13 @@ type InvalidConnection = {
 // validateConnections のスケジューリング用（ドラッグ中の連続呼び出しをデバウンス）
 let _validationPendingId: number | null = null
 
+type ConnectionReference = { connectionId: string; pipeId: string; side: 'start' | 'end' | 'midway' }
+
 /**
  * 指定ジョイントに接続している全コネクションを返すヘルパー
  */
-function getAllConnectionsToJoint(pipes: ErectorPipe[], jointId: string): Array<{ connectionId: string; pipeId: string; side: 'start' | 'end' | 'midway' }> {
-  const result: Array<{ connectionId: string; pipeId: string; side: 'start' | 'end' | 'midway' }> = []
+function getAllConnectionsToJoint(pipes: ErectorPipe[], jointId: string): ConnectionReference[] {
+  const result: ConnectionReference[] = []
   for (const pipe of pipes) {
     if (pipe.connections.start?.jointId === jointId) {
       result.push({ connectionId: pipe.connections.start.id, pipeId: pipe.id, side: 'start' })
