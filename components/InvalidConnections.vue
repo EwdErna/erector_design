@@ -27,7 +27,7 @@
           <button @click="erector.resolveByDisconnect(connection.id)">この接続を切断</button>
           <button
             v-if="connection.conflictingConnectionId"
-            @click="erector.resolveByDisconnect(connection.conflictingConnectionId!)"
+            @click="connection.conflictingConnectionId && erector.resolveByDisconnect(connection.conflictingConnectionId)"
           >相手の接続を切断</button>
           <button
             v-if="connection.side === 'midway'"
@@ -35,7 +35,7 @@
           >この位置を更新</button>
           <button
             v-if="connection.conflictingSide === 'midway' && connection.conflictingConnectionId"
-            @click="erector.resolveByUpdatePosition(connection.conflictingConnectionId!)"
+            @click="connection.conflictingConnectionId && erector.resolveByUpdatePosition(connection.conflictingConnectionId)"
           >相手の位置を更新</button>
         </div>
       </div>

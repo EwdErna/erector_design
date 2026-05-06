@@ -943,6 +943,8 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       if (!jointInstance || !pipeInstance) return
 
       // ジョイントの穴のワールド座標をパイプ軸に射影して新しい position (0〜1) を求める
+      // position はパイプ全長に対する正規化された位置 (0=始端, 1=終端)
+      // パイプ外にはみ出した場合はクランプしてパイプ端点に固定する
       const holeWorldPos = jointInstance.position.clone()
         .add(hole.offset.clone().applyQuaternion(jointInstance.quaternion))
       const pipeStart = pipeInstance.position.clone()
