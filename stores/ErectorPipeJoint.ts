@@ -178,6 +178,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       // 変更を加えたので再validate（ドラッグ中の連続呼び出しを間引く）
       this.scheduleValidation()
     },
+    removeConnection(id: string) {
       const pipe = this.pipes.find(p => p.connections.start?.id === id || p.connections.end?.id === id || p.connections.midway.some(conn => conn.id === id))
       if (!pipe) return
 
