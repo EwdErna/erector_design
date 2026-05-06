@@ -907,14 +907,12 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
         errors.filter(e => e.conflictType === 'constraint').forEach(error => {
           if (this.lastModifiedConnectionId === error.id) {
             // 最後に動かした接続が「負け」側に判定されている → 競合相手を更新する
-            if (error.conflictingSide === 'midway' && error.conflictingConnectionId) {
+            if (error.conflictingConnectionId) {
               this.resolveByUpdatePosition(error.conflictingConnectionId)
             }
           } else {
-            // 通常ケース: エラー（負け側）が midway なら位置を更新して接続を維持する
-            if (error.side === 'midway') {
-              this.resolveByUpdatePosition(error.id)
-            }
+            // 通常ケース: エラー（負け側）の rotation/position を更新して接続を維持する
+            this.resolveByUpdatePosition(error.id)
           }
         })
       }
@@ -927,32 +925,74 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       this.validateConnections()
     },
     resolveByUpdatePosition(connectionId: string) {
-      // midway 接続のみ有効（start/end はパイプ端点固定のため位置を変えられない）
-      const pipe = this.pipes.find(p => p.connections.midway.some(c => c.id === connectionId))
+      // ジョイントの現在のワールド座標・回転をパイプ軸に合わせて position と rotation を更新する
+      // position: midway のみ（start/end はパイプ端点固定のため変更不可）
+      // rotation: start/end/midway 全て対応
+      const pipe = this.pipes.find(p =>
+        p.connections.midway.some(c => c.id === connectionId) ||
+        p.connections.start?.id === connectionId ||
+        p.connections.end?.id === connectionId
+      )
       if (!pipe) return
-      const conn = pipe.connections.midway.find(c => c.id === connectionId)
+
+      const isMidway = pipe.connections.midway.some(c => c.id === connectionId)
+      const isStart = pipe.connections.start?.id === connectionId
+      const isEnd = pipe.connections.end?.id === connectionId
+
+      let conn: ErectorPipeConnection | undefined
+      if (isMidway) conn = pipe.connections.midway.find(c => c.id === connectionId)
+      else if (isStart) conn = pipe.connections.start
+      else if (isEnd) conn = pipe.connections.end
       if (!conn) return
 
-      const joint = this.joints.find(j => j.id === conn.jointId)
+      const joint = this.joints.find(j => j.id === conn!.jointId)
       if (!joint) return
       const hole = joint.holes[conn.holeId]
       if (!hole) return
 
-      const jointInstance = this.instances.find(i => i.id === conn.jointId)?.obj
+      const jointInstance = this.instances.find(i => i.id === conn!.jointId)?.obj
       const pipeInstance = this.instances.find(i => i.id === pipe.id)?.obj
       if (!jointInstance || !pipeInstance) return
 
-      // ジョイントの穴のワールド座標をパイプ軸に射影して新しい position (0〜1) を求める
-      // position はパイプ全長に対する正規化された位置 (0=始端, 1=終端)
-      // パイプ外にはみ出した場合はクランプしてパイプ端点に固定する
-      const holeWorldPos = jointInstance.position.clone()
-        .add(hole.offset.clone().applyQuaternion(jointInstance.quaternion))
-      const pipeStart = pipeInstance.position.clone()
-      const pipeDir = new Vector3(0, 0, 1).applyQuaternion(pipeInstance.quaternion)
-      const dist = holeWorldPos.clone().sub(pipeStart).dot(pipeDir)
-      const newPosition = Math.max(0, Math.min(1, dist / pipe.length))
+      const updates: Partial<ErectorPipeConnection> = {}
 
-      this.updateConnection(connectionId, { position: newPosition })
+      if (isMidway) {
+        // ジョイントの穴のワールド座標をパイプ軸に射影して新しい position (0〜1) を求める
+        // position はパイプ全長に対する正規化された位置 (0=始端, 1=終端)
+        // パイプ外にはみ出した場合はクランプしてパイプ端点に固定する
+        const holeWorldPos = jointInstance.position.clone()
+          .add(hole.offset.clone().applyQuaternion(jointInstance.quaternion))
+        const pipeStart = pipeInstance.position.clone()
+        const pipeDir = new Vector3(0, 0, 1).applyQuaternion(pipeInstance.quaternion)
+        const dist = holeWorldPos.clone().sub(pipeStart).dot(pipeDir)
+        updates.position = Math.max(0, Math.min(1, dist / pipe.length))
+
+        // midway: jointQuat = pipeQuat * (holeDir * Rz(rotation)).inv = pipeQuat * Rz(-rotation) * holeDir.inv
+        // → relQuat = pipeQuat.inv * jointQuat * holeDir = Rz(-rotation)
+        const relQuat = pipeInstance.quaternion.clone().invert()
+          .multiply(jointInstance.quaternion)
+          .multiply(hole.dir.clone())
+        updates.rotation = -radiansToDegrees(2 * Math.atan2(relQuat.z, relQuat.w))
+      } else if (isStart) {
+        // start: jointQuat = pipeQuat * (holeDir * Rz(rotation)).inv = pipeQuat * Rz(-rotation) * holeDir.inv
+        // → relQuat = pipeQuat.inv * jointQuat * holeDir = Rz(-rotation)
+        const relQuat = pipeInstance.quaternion.clone().invert()
+          .multiply(jointInstance.quaternion)
+          .multiply(hole.dir.clone())
+        updates.rotation = -radiansToDegrees(2 * Math.atan2(relQuat.z, relQuat.w))
+      } else if (isEnd) {
+        // end: jointQuat = pipeQuat * Ry(π) * (holeDir * Rz(rotation)).inv
+        //   = pipeQuat * Ry(π) * Rz(-rotation) * holeDir.inv
+        // → relQuat = Ry(π).inv * pipeQuat.inv * jointQuat * holeDir = Rz(-rotation)
+        const ryPi = new Quaternion().setFromEuler(new Euler(0, Math.PI, 0))
+        const relQuat = ryPi.clone().invert()
+          .multiply(pipeInstance.quaternion.clone().invert())
+          .multiply(jointInstance.quaternion)
+          .multiply(hole.dir.clone())
+        updates.rotation = -radiansToDegrees(2 * Math.atan2(relQuat.z, relQuat.w))
+      }
+
+      this.updateConnection(connectionId, updates)
     },
     removeJoint(jointId: string) {
       // 削除対象のジョイントを使用している全てのコネクションを収集して削除
