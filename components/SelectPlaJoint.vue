@@ -69,6 +69,7 @@ function addJointToScene(name: string, category: string) {
       offset: new Vector3().fromArray(j.start ?? [0, 0, 0])
     }
   }))
+  erector.validateConnections()
   console.log(`added ${added_id}`)
 }
 </script>

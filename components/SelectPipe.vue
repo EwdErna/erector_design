@@ -55,6 +55,7 @@ const addPipeToScene = () => {
   if (!scene) { return }
   const erector = useErectorPipeJoint()
   const added_id = erector.addPipe(scene, selected.value.diameter / 1000, selected.value.length)
+  erector.validateConnections()
 }
 
 </script>
