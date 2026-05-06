@@ -75,8 +75,6 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       // TODO: get scene and add pipeObject to it
       scene.add(pipeObject)
 
-      // 変更を加えたので再validate
-      this.validateConnections()
       return id
     },
     updatePipe(id: string, key: 'length' | 'diameter', value: number) {
@@ -119,8 +117,6 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
         })
       }
 
-      // 変更を加えたので再validate
-      this.validateConnections()
       return id
     },
     addConnection(pipeId: string, jointId: string, holeId: number, side: "start" | "end" | "midway", rotation?: number, position?: number, id?: string) {//jointの穴にpipeを接続
@@ -160,8 +156,6 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
           break
       }
 
-      // 変更を加えたので再validate
-      this.validateConnections()
     },
     updateConnection(id: string, connectionToUpdate: Partial<ErectorPipeConnection>) {
       //find connection with id 
@@ -202,8 +196,6 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
         }
       }
 
-      // 変更を加えたので再validate
-      this.validateConnections()
     },
     clearAll() {
       const three = useThree()
@@ -247,9 +239,6 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       this.pipeJointRelationships = []
       this.renderCount = 0
       this.rootPipeId = ''
-
-      // 変更を加えたので再validate
-      this.validateConnections()
     },
     loadFromStructure(structure: { pipes: ErectorPipe[], joints: { id: string, name: string }[], rootTransform?: { pipeId: string, position: [number, number, number], rotation: [number, number, number] } }) {
       // Clear all existing pipes and joints before loading new structure
@@ -331,9 +320,6 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
         connectionType,
         relationshipType
       })
-
-      // 変更を加えたので再validate
-      this.validateConnections()
     },
 
     getPipeJointRelationship(pipeId: string, jointId: string, holeId: number, connectionType: 'start' | 'end' | 'midway'): 'j2p' | 'p2j' | null {
@@ -347,9 +333,6 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       this.pipeJointRelationships = this.pipeJointRelationships.filter(rel =>
         !(rel.pipeId === pipeId && rel.jointId === jointId && rel.holeId === holeId && rel.connectionType === connectionType)
       )
-
-      // 変更を加えたので再validate
-      this.validateConnections()
     },
 
     /**
@@ -368,9 +351,6 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
 
       // 座標変更をログに記録（デバッグ用）
       console.log(`Updated position for ${id}: [${position.join(', ')}]`)
-
-      // 変更を加えたので再validate
-      this.validateConnections()
     },
 
     /**
@@ -394,9 +374,6 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
 
       // 回転変更をログに記録（デバッグ用）
       console.log(`Updated rotation for ${id}: [${rotation.join(', ')}]° -> [${instance.obj.rotation.x}, ${instance.obj.rotation.y}, ${instance.obj.rotation.z}] rad`)
-
-      // 変更を加えたので再validate
-      this.validateConnections()
     },
 
     /**
