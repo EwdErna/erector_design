@@ -328,14 +328,14 @@ function removeObject(obj: ErectorPipe | ErectorJoint) {
 
   if (isErectorPipe(obj)) {
     // パイプの削除（関連するコネクションも含めて適切に削除）
-    erector.removePipe(id);
+    erector.removePipe(obj.id);
   } else {
     // ジョイントの削除（関連するコネクションも含めて削除）
-    erector.removeJoint(id);
+    erector.removeJoint(obj.id);
   }
 
   // 選択状態を解除（削除したオブジェクトが選択されていた場合）
-  if (objectSelection.object === id) {
+  if (objectSelection.object === obj.id) {
     objectSelection.object = '';
   }
 }
