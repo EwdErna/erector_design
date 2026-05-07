@@ -199,9 +199,6 @@ function updatePosition(axis: number, value: number) {
   erector.updateObjectPosition(objectSelection.object, newPosition)
   erector.validateConnections()
 
-  // 依存関係を再計算
-  erector.recalculateObjectDependencies(objectSelection.object)
-
   // 入力値をストアの値で更新（他の操作による変更を反映）
   inputPosition.value = [...currentPosition.value]
 }
@@ -216,9 +213,6 @@ function updateRotation(axis: number, value: number) {
 
   erector.updateObjectRotation(objectSelection.object, newRotation)
   erector.validateConnections()
-
-  // 依存関係を再計算
-  erector.recalculateObjectDependencies(objectSelection.object)
 
   // 入力値をストアの値で更新（他の操作による変更を反映）
   inputRotation.value = [...currentRotation.value]
