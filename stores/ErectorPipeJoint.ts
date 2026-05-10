@@ -945,10 +945,10 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
               const holePosDiff = actualHolePos.distanceTo(expectedHolePos)
 
               const actualHoleDir = new Vector3(0, 0, 1).applyQuaternion(jointInstance.quaternion.clone().multiply(hole.dir))
-              const expectedHoleDir = new Vector3(0, 0, 1).applyQuaternion(pipeInstance.quaternion)
+              const expectedHoleDir = new Vector3(0, 0, conn.reverse ? -1 : 1).applyQuaternion(pipeInstance.quaternion)
               const holeDirDiff = actualHoleDir.angleTo(expectedHoleDir)
               const actualHoleRight = new Vector3(1, 0, 0).applyQuaternion(jointInstance.quaternion.clone().multiply(hole.dir))
-              const expectedHoleRight = new Vector3(1, 0, 0).applyQuaternion(pipeInstance.quaternion.clone()
+              const expectedHoleRight = new Vector3(conn.reverse ? -1 : 1, 0, 0).applyQuaternion(pipeInstance.quaternion.clone()
                 .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), degreesToRadians(-conn.rotation))))
               const holeRightDiff = actualHoleRight.angleTo(expectedHoleRight)
               if (holePosDiff > 0.001 || holeDirDiff > 0.001 || holeRightDiff > 0.001) {
