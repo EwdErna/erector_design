@@ -71,6 +71,7 @@ function clampMidwayPosition(position: number, pipeLength: number): number {
 }
 
 // midway の THROUGH 接続を逆向きにする場合、pipeローカルY軸で 180° 反転させる。
+// Y軸反転で穴軸方向（±Z）が反転し、through穴の表裏どちら向きにも取り付けできる。
 function getMidwayReverseQuaternion(connection: ErectorPipeConnection): Quaternion {
   return connection.reverse === true
     ? new Quaternion().setFromEuler(new Euler(0, Math.PI, 0))
@@ -232,7 +233,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
             holeId,
             rotation: rotation ?? 0,
             position: 0,
-            reverse: false,
+            reverse: reverse ?? false,
           }
           break
         case 'midway':
