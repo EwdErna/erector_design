@@ -70,6 +70,12 @@ function clampMidwayPosition(position: number, pipeLength: number): number {
   return Math.max(0, Math.min(pipeLength, position))
 }
 
+function getMidwayReverseQuaternion(connection: ErectorPipeConnection): Quaternion {
+  return connection.reverse === true
+    ? new Quaternion().setFromEuler(new Euler(0, Math.PI, 0))
+    : new Quaternion()
+}
+
 export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
   state: () => ({
     pipes: [] as ErectorPipe[],
@@ -206,7 +212,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
 
       return id
     },
-    addConnection(pipeId: string, jointId: string, holeId: number, side: "start" | "end" | "midway", rotation?: number, position?: number, id?: string) {//jointの穴にpipeを接続
+    addConnection(pipeId: string, jointId: string, holeId: number, side: "start" | "end" | "midway", rotation?: number, position?: number, id?: string, reverse?: boolean) {//jointの穴にpipeを接続
       const pipe = this.pipes.find(pipe => pipe.id === pipeId)
       const joint = this.joints.find(joint => joint.id === jointId)
       if (!pipe || !joint) return
@@ -225,6 +231,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
             holeId,
             rotation: rotation ?? 0,
             position: 0,
+            reverse: false,
           }
           break
         case 'midway':
@@ -239,6 +246,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
             holeId,
             rotation: rotation ?? 0,
             position: clampMidwayPosition(position ?? 0, pipe.length),
+            reverse: reverse ?? false,
           })
           break
       }
@@ -370,20 +378,20 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
           const startConnection = this.pipes.find(p => p.id === pipe.id)?.connections.start
           if (startConnection) {
             //既に接続済み。BAD STRUCTURE
-          } else this.addConnection(pipe.id, pipe.connections.start.jointId, pipe.connections.start.holeId, "start")
+          } else this.addConnection(pipe.id, pipe.connections.start.jointId, pipe.connections.start.holeId, "start", pipe.connections.start.rotation, pipe.connections.start.position, pipe.connections.start.id, pipe.connections.start.reverse)
         }
         if (pipe.connections.end) {
           jointInstanciate(pipe.connections.end)
           const endConnection = this.pipes.find(p => p.id === pipe.id)?.connections.end
           if (endConnection) {
             //既に接続済み。BAD STRUCTURE
-          } else this.addConnection(pipe.id, pipe.connections.end.jointId, pipe.connections.end.holeId, "end", pipe.connections.end.rotation, pipe.connections.end.position)
+          } else this.addConnection(pipe.id, pipe.connections.end.jointId, pipe.connections.end.holeId, "end", pipe.connections.end.rotation, pipe.connections.end.position, pipe.connections.end.id, pipe.connections.end.reverse)
         } pipe.connections.midway.forEach(conn => {
           jointInstanciate(conn)
           const midwayConnection = this.pipes.find(p => p.id === pipe.id)?.connections.midway
           if (midwayConnection?.find(c => c.jointId === conn.jointId && c.holeId === conn.holeId)) {
             //既に接続済み。BAD STRUCTURE
-          } else this.addConnection(pipe.id, conn.jointId, conn.holeId, "midway", conn.rotation, conn.position)
+          } else this.addConnection(pipe.id, conn.jointId, conn.holeId, "midway", conn.rotation, conn.position, conn.id, conn.reverse)
         })
       })
       // Apply root transforms if provided
@@ -600,8 +608,11 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
 
                   // For j2p midway connections, we need to position the pipe so that the midway connection
                   // aligns with the joint hole at the specified position along the pipe
-                  const rotation = jointInstance.quaternion.clone().multiply(hole.dir.clone()
-                    .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), degreesToRadians(midway.rotation))))
+                  const rotation = jointInstance.quaternion.clone().multiply(
+                    hole.dir.clone()
+                      .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), degreesToRadians(midway.rotation)))
+                      .multiply(getMidwayReverseQuaternion(midway))
+                  )
 
                   // Calculate pipe position: joint position - (pipe direction * distance from pipe start to midway position)
                   const pipeDirection = new Vector3(0, 0, 1).applyQuaternion(rotation)
@@ -751,6 +762,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
                     joint.transform.position = transform.position + transform.forward * (pipeLength / 1000f * conn.axis_pos / 100f) + r * -hole.offset;
                    */
                   const rotation = pipeTransform.rotation.clone()
+                    .multiply(getMidwayReverseQuaternion(conn))
                     .multiply(hole.dir.clone()
                       .multiply(new Quaternion().setFromEuler(new Euler(0, 0, degreesToRadians(conn.rotation)))).invert())
                   const position = pipeTransform.position.clone()
@@ -832,10 +844,10 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
               const holePosDiff = actualHolePos.distanceTo(expectedHolePos)
 
               const actualHoleDir = new Vector3(0, 0, 1).applyQuaternion(jointInstance.quaternion.clone().multiply(hole.dir))
-              const expectedHoleDir = new Vector3(0, 0, 1).applyQuaternion(pipeInstance.quaternion)
+              const expectedHoleDir = new Vector3(0, 0, conn.reverse ? -1 : 1).applyQuaternion(pipeInstance.quaternion)
               const holeDirDiff = actualHoleDir.angleTo(expectedHoleDir)
               const actualHoleRight = new Vector3(1, 0, 0).applyQuaternion(jointInstance.quaternion.clone().multiply(hole.dir))
-              const expectedHoleRight = new Vector3(1, 0, 0).applyQuaternion(pipeInstance.quaternion.clone()
+              const expectedHoleRight = new Vector3(conn.reverse ? -1 : 1, 0, 0).applyQuaternion(pipeInstance.quaternion.clone()
                 .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), degreesToRadians(-conn.rotation))))
               const holeRightDiff = actualHoleRight.angleTo(expectedHoleRight)
               if (holePosDiff > 0.001 || holeDirDiff > 0.001 || holeRightDiff > 0.001) {

@@ -105,6 +105,11 @@
             <input type="number" v-model="inputConnMidwayPositions[i]" min="0" :max="selectedPipe.length * 1000" step="1"
               @change="updateConnectionPosition(i, inputConnMidwayPositions[i])">
           </div>
+          <div v-if="isMidwayThroughHole(i)">
+            逆向きにつける:
+            <input type="checkbox" :checked="inputConnMidwayReverses[i] === true"
+              @change="onMidwayReverseChange(i, $event)">
+          </div>
         </div>
       </div>
       <div>
@@ -163,6 +168,7 @@ const inputConnStartRotation = ref(0)
 const inputConnEndRotation = ref(0)
 const inputConnMidwayRotations = ref<number[]>([])
 const inputConnMidwayPositions = ref<number[]>([])
+const inputConnMidwayReverses = ref<boolean[]>([])
 
 // 現在の位置と回転を取得するcomputed値
 const currentPosition = computed(() => {
@@ -275,6 +281,21 @@ function updateConnectionPosition(index: number, value: number) {
     inputConnMidwayPositions.value[index] = (conn.position || 0) * 1000
   }
 }
+
+function updateConnectionReverse(index: number, value: boolean) {
+  if (!selectedPipe.value || !connMidway.value) return
+  const conn = connMidway.value[index]
+  if (!conn) return
+  erector.updateConnection(conn.id, { reverse: value })
+  inputConnMidwayReverses.value[index] = conn.reverse === true
+}
+
+function onMidwayReverseChange(index: number, event: Event) {
+  const target = event.target as HTMLInputElement | null
+  if (!target) return
+  updateConnectionReverse(index, target.checked)
+}
+
 const connStart = computed(() => selectedPipe.value?.connections.start)
 const connStartJoint = computed(() => erector.joints.find(j => j.id === connStart.value?.jointId))
 const connEnd = computed(() => selectedPipe.value?.connections.end)
@@ -284,6 +305,11 @@ const connMidJoint = computed(() => (i: number) => {
   const conn = selectedPipe.value?.connections.midway[i]
   if (!conn) return undefined
   return erector.joints.find(j => j.id === conn.jointId)
+})
+const isMidwayThroughHole = computed(() => (i: number) => {
+  const conn = connMidway.value?.[i]
+  if (!conn) return false
+  return connMidJoint.value(i)?.holes[conn.holeId]?.type === 'THROUGH'
 })
 
 const pipeRelationships = computed(() => {
@@ -302,9 +328,11 @@ watch([connStart, connEnd, connMidway], () => {
   if (connMidway.value) {
     inputConnMidwayRotations.value = connMidway.value.map(conn => conn.rotation || 0)
     inputConnMidwayPositions.value = connMidway.value.map(conn => (conn.position || 0) * 1000)
+    inputConnMidwayReverses.value = connMidway.value.map(conn => conn.reverse === true)
   } else {
     inputConnMidwayRotations.value = []
     inputConnMidwayPositions.value = []
+    inputConnMidwayReverses.value = []
   }
 }, { immediate: true, deep: true })
 
