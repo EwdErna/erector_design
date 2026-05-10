@@ -63,14 +63,8 @@ function download() {
     diameter: pipe.diameter * 1000,
     length: pipe.length * 1000,
     connections: {
-      start: pipe.connections.start ? {
-        ...pipe.connections.start,
-        position: pipe.connections.start.position * 1000
-      } : undefined,
-      end: pipe.connections.end ? {
-        ...pipe.connections.end,
-        position: pipe.connections.end.position * 1000
-      } : undefined,
+      start: pipe.connections.start,
+      end: pipe.connections.end,
       midway: pipe.connections.midway.map(conn => ({
         ...conn,
         position: conn.position * 1000
@@ -135,14 +129,8 @@ function handleFileUpload(event: Event) {
           diameter: pipe.diameter / 1000,
           length: pipe.length / 1000,
           connections: {
-            start: pipe.connections.start ? {
-              ...pipe.connections.start,
-              position: pipe.connections.start.position / 1000
-            } : undefined,
-            end: pipe.connections.end ? {
-              ...pipe.connections.end,
-              position: pipe.connections.end.position / 1000
-            } : undefined,
+            start: pipe.connections.start,
+            end: pipe.connections.end,
             midway: pipe.connections.midway.map(conn => ({
               ...conn,
               position: conn.position / 1000
