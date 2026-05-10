@@ -227,7 +227,7 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
     if (!this.target || !this.coordinateManager) return;
 
     this.dragStart = intersectionPoint.clone();
-    this.dragStartAngle = gizmo.userData.currentPosition; // Store current position
+    this.dragStartAngle = gizmo.userData.currentPosition; // Store current position in meters
 
     // Create dragging plane with normal perpendicular to pipe direction (similar to PipeControls Y-axis approach)
     const pipeDirection = new Vector3().fromArray(gizmo.userData.pipeDirection);
@@ -314,7 +314,7 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
   }
 
   /**
-   * Calculate new position value for position slider
+    * Calculate new position value for position slider
    * Handles both j2p and p2j relationships correctly
    */
   private calculatePositionSliderValue(currentIntersection: Vector3): number {
@@ -363,14 +363,12 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
     // Calculate the difference along the pipe's Z-axis (pipe direction)
     const deltaZ = dragStartLocalPos.z - currentLocalPos.z;
 
-    // Convert the Z difference to position change (normalized by pipe length)
-    const positionDelta = deltaZ / pipeLength;
+    const positionDelta = deltaZ;
 
     // Apply the delta to the starting position
     const newPosition = this.dragStartAngle + positionDelta;
 
-    // Clamp to valid range [0, 1]
-    return Math.max(0, Math.min(1, newPosition));
+    return Math.max(0, Math.min(pipeLength, newPosition));
   }
 
   /**
@@ -379,10 +377,7 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
   private calculateP2JPositionValue(currentIntersection: Vector3, pipeObject: Object3D, pipeLength: number): number {
     const pipeWorldToLocal = pipeObject.worldToLocal.bind(pipeObject);
     const currentLocalPos = pipeWorldToLocal(currentIntersection.clone());
-    const clampedZ = Math.max(0, Math.min(pipeLength, currentLocalPos.z));
-    const newPosition = clampedZ / pipeLength;
-
-    return newPosition;
+    return Math.max(0, Math.min(pipeLength, currentLocalPos.z));
   }
 
   /**
@@ -413,7 +408,7 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
     const indicator = sliderMesh.getObjectByName(`${sliderMesh.name}-indicator`);
     if (indicator) {
       const sliderLength = sliderMesh.userData.pipeLength;
-      const indicatorOffset = (newPosition - 0.5) * sliderLength;
+      const indicatorOffset = newPosition - sliderLength / 2;
 
       if (relationshipType === 'j2p') {
         // For j2p: move the slider, keep indicator fixed
@@ -721,9 +716,9 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
 
     // Then, move along pipe direction so slider start is at pipe start (position 0)
     // Current joint position represents the midway connection position
-    // We need to move back by (connection.position * pipe.length) to get to pipe start
+    // We need to move back by connection.position to get to pipe start
     const connectionPosition = connection.position;
-    const pipeStartOffset = pipeDirection.clone().multiplyScalar(-connectionPosition * pipe.length);
+    const pipeStartOffset = pipeDirection.clone().multiplyScalar(-connectionPosition);
 
     // Finally, move forward by half slider length to center the slider on the pipe
     const sliderCenterOffset = pipeDirection.clone().multiplyScalar(sliderLength / 2);
@@ -783,10 +778,9 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
 
     const indicator = new Mesh(indicatorGeometry, indicatorMaterial);
 
-    // Position the indicator along the slider based on the connection position
-    // Position 0 = start of pipe, Position 1 = end of pipe
+    // Position the indicator along the slider based on the connection position in meters
     // The indicator moves along the slider's local Y-axis (which is aligned with pipe direction)
-    const indicatorOffset = (position - 0.5) * sliderLength;
+    const indicatorOffset = position - sliderLength / 2;
     indicator.position.set(0, indicatorOffset, 0); // Y-axis because slider is oriented along pipe direction
 
     indicator.name = `${sliderMesh.name}-indicator`;

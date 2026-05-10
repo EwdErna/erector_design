@@ -78,7 +78,7 @@ const setupScene = () => {
             jointId: "J-12B_0001",
             holeId: 0,
             rotation: 0,
-            position: 0.75
+            position: 0.225
           }
         ]
       }

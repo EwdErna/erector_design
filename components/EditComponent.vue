@@ -101,9 +101,10 @@
               }}
             </span>
           </div>
-          <div>Position: <input type="number" v-model="inputConnMidwayPositions[i]" min="0" max="1" step="0.01"
-              @change="updateConnectionPosition(i, inputConnMidwayPositions[i])"> : {{
-                (inputConnMidwayPositions[i] || 0) * selectedPipe.length * 1000 }}mm</div>
+          <div>Position(mm):
+            <input type="number" v-model="inputConnMidwayPositions[i]" min="0" :max="selectedPipe.length * 1000" step="1"
+              @change="updateConnectionPosition(i, inputConnMidwayPositions[i])">
+          </div>
         </div>
       </div>
       <div>
@@ -270,8 +271,8 @@ function updateConnectionPosition(index: number, value: number) {
 
   const conn = connMidway.value[index]
   if (conn) {
-    erector.updateConnection(conn.id, { position: value })
-    inputConnMidwayPositions.value[index] = conn.position || 0
+    erector.updateConnection(conn.id, { position: value / 1000 })
+    inputConnMidwayPositions.value[index] = (conn.position || 0) * 1000
   }
 }
 const connStart = computed(() => selectedPipe.value?.connections.start)
@@ -300,7 +301,7 @@ watch([connStart, connEnd, connMidway], () => {
   }
   if (connMidway.value) {
     inputConnMidwayRotations.value = connMidway.value.map(conn => conn.rotation || 0)
-    inputConnMidwayPositions.value = connMidway.value.map(conn => conn.position || 0)
+    inputConnMidwayPositions.value = connMidway.value.map(conn => (conn.position || 0) * 1000)
   } else {
     inputConnMidwayRotations.value = []
     inputConnMidwayPositions.value = []

@@ -66,6 +66,10 @@ function getAllConnectionsToJoint(pipes: ErectorPipe[], jointId: string): Connec
   return result
 }
 
+function clampMidwayPosition(position: number, pipeLength: number): number {
+  return Math.max(0, Math.min(pipeLength, position))
+}
+
 export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
   state: () => ({
     pipes: [] as ErectorPipe[],
@@ -112,6 +116,12 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       const pipe = this.pipes.findIndex(p => p.id === id)
       if (pipe < 0) return;
       this.pipes[pipe][key] = value
+      if (key === 'length') {
+        this.pipes[pipe].connections.midway = this.pipes[pipe].connections.midway.map(conn => ({
+          ...conn,
+          position: clampMidwayPosition(conn.position, value)
+        }))
+      }
       const obj = this.instances.find(v => v.id === id)?.obj
       if (!obj) return;
       obj.traverse(v => {
@@ -182,7 +192,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
             jointId,
             holeId,
             rotation: rotation ?? 0,
-            position: position ?? 0,
+            position: clampMidwayPosition(position ?? 0, pipe.length),
           })
           break
       }
@@ -200,7 +210,13 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       if (connection === 'start' || connection === 'end') {
         pipe.connections[connection] = { ...connectionBeforeUpdate, ...connectionToUpdate }
       } else {
-        pipe.connections.midway[connection] = { ...connectionBeforeUpdate, ...connectionToUpdate }
+        pipe.connections.midway[connection] = {
+          ...connectionBeforeUpdate,
+          ...connectionToUpdate,
+          ...(typeof connectionToUpdate.position === 'number'
+            ? { position: clampMidwayPosition(connectionToUpdate.position, pipe.length) }
+            : {})
+        }
       }
 
       // 変更を加えたので再validate（ドラッグ中の連続呼び出しを間引く）
@@ -540,7 +556,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
 
                   // Calculate pipe position: joint position - (pipe direction * distance from pipe start to midway position)
                   const pipeDirection = new Vector3(0, 0, 1).applyQuaternion(rotation)
-                  const distanceFromStart = pipe.length * (midway.position ?? 0) // Use position or default to start (0)
+                  const distanceFromStart = clampMidwayPosition(midway.position ?? 0, pipe.length)
                   const holeWorldPosition = jointInstance.position.clone().add(hole.offset.clone().applyQuaternion(jointInstance.quaternion))
                   const position = holeWorldPosition.clone().sub(pipeDirection.clone().multiplyScalar(distanceFromStart))
 
@@ -688,7 +704,9 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
                   const rotation = pipeTransform.rotation.clone()
                     .multiply(hole.dir.clone()
                       .multiply(new Quaternion().setFromEuler(new Euler(0, 0, degreesToRadians(conn.rotation)))).invert())
-                  const position = pipeTransform.position.clone().add(new Vector3(0, 0, 1).applyQuaternion(pipeTransform.rotation).multiplyScalar(pipe.length * conn.position)).add(hole.offset.clone().applyQuaternion(rotation))
+                  const position = pipeTransform.position.clone()
+                    .add(new Vector3(0, 0, 1).applyQuaternion(pipeTransform.rotation).multiplyScalar(clampMidwayPosition(conn.position, pipe.length)))
+                    .add(hole.offset.clone().applyQuaternion(rotation))
                   const target = instances.find(i => i.id === joint.id)?.obj;
                   target?.position.set(...position.toArray())
                   target?.quaternion.copy(rotation)
@@ -852,7 +870,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
               const actualHolePos = jointInstance.position.clone()
                 .add(hole.offset.clone().applyQuaternion(jointInstance.quaternion.clone()))
               const expectedHolePos = pipeInstance.position.clone()
-                .add(new Vector3(0, 0, 1).applyQuaternion(pipeInstance.quaternion).multiplyScalar(pipe.length * conn.position))
+                .add(new Vector3(0, 0, 1).applyQuaternion(pipeInstance.quaternion).multiplyScalar(clampMidwayPosition(conn.position, pipe.length)))
               const holePosDiff = actualHolePos.distanceTo(expectedHolePos)
 
               const actualHoleDir = new Vector3(0, 0, 1).applyQuaternion(jointInstance.quaternion.clone().multiply(hole.dir))
@@ -944,15 +962,14 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       const pipeInstance = this.instances.find(i => i.id === pipe.id)?.obj
       if (!jointInstance || !pipeInstance) return
 
-      // ジョイントの穴のワールド座標をパイプ軸に射影して新しい position (0〜1) を求める
-      // position はパイプ全長に対する正規化された位置 (0=始端, 1=終端)
+      // ジョイントの穴のワールド座標をパイプ軸に射影して新しい position[m] を求める
       // パイプ外にはみ出した場合はクランプしてパイプ端点に固定する
       const holeWorldPos = jointInstance.position.clone()
         .add(hole.offset.clone().applyQuaternion(jointInstance.quaternion))
       const pipeStart = pipeInstance.position.clone()
       const pipeDir = new Vector3(0, 0, 1).applyQuaternion(pipeInstance.quaternion)
       const dist = holeWorldPos.clone().sub(pipeStart).dot(pipeDir)
-      const newPosition = Math.max(0, Math.min(1, dist / pipe.length))
+      const newPosition = clampMidwayPosition(dist, pipe.length)
 
       this.updateConnection(connectionId, { position: newPosition })
     },
