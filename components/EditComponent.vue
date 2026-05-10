@@ -7,7 +7,7 @@
       <hr>
       <div v-if="selectedObject?.obj">
         <div>
-          position: <input type="number" v-model="inputPosition[0]" @change="updatePosition(0, inputPosition[0])">,
+          position(mm): <input type="number" v-model="inputPosition[0]" @change="updatePosition(0, inputPosition[0])">,
           <input type="number" v-model="inputPosition[1]" @change="updatePosition(1, inputPosition[1])">,
           <input type="number" v-model="inputPosition[2]" @change="updatePosition(2, inputPosition[2])">
         </div>
@@ -22,7 +22,7 @@
         <input type="number" min="0" max="4000" v-model="inputLength" @change="updateLength" />
       </div>
       <div><select v-model="inputDiameter" @change="updateDiameter">
-          <option v-for="d in [28, 32, 42]" :value="d / 1000">Φ{{ d }}</option>
+          <option v-for="d in [28, 32, 42]" :value="d">Φ{{ d }}</option>
         </select>
       </div>
       <div>
@@ -124,7 +124,7 @@
       <hr>
       <div v-if="selectedObject?.obj">
         <div>
-          position: <input type="number" v-model="inputPosition[0]" @change="updatePosition(0, inputPosition[0])">,
+          position(mm): <input type="number" v-model="inputPosition[0]" @change="updatePosition(0, inputPosition[0])">,
           <input type="number" v-model="inputPosition[1]" @change="updatePosition(1, inputPosition[1])">,
           <input type="number" v-model="inputPosition[2]" @change="updatePosition(2, inputPosition[2])">
         </div>
@@ -176,7 +176,7 @@ const currentRotation = computed(() => {
 
 // オブジェクトが変更された時に入力値を同期
 watch([objectSelection, currentPosition, currentRotation], () => {
-  inputPosition.value = [...currentPosition.value]
+  inputPosition.value = currentPosition.value.map(v => v * 1000)
   inputRotation.value = [...currentRotation.value]
 }, { immediate: true })
 
@@ -184,7 +184,7 @@ watch([objectSelection, currentPosition, currentRotation], () => {
 watch(selectedPipe, (pipe) => {
   if (pipe) {
     inputLength.value = pipe.length * 1000
-    inputDiameter.value = pipe.diameter
+    inputDiameter.value = pipe.diameter * 1000
   }
 }, { immediate: true })
 
@@ -194,13 +194,13 @@ function updatePosition(axis: number, value: number) {
   if (isNaN(value)) return
 
   const newPosition = [...currentPosition.value] as [number, number, number]
-  newPosition[axis] = value
+  newPosition[axis] = value / 1000
 
   erector.updateObjectPosition(objectSelection.object, newPosition)
   erector.validateConnections()
 
   // 入力値をストアの値で更新（他の操作による変更を反映）
-  inputPosition.value = [...currentPosition.value]
+  inputPosition.value = currentPosition.value.map(v => v * 1000)
 }
 
 // 回転更新関数
@@ -240,9 +240,9 @@ function updateDiameter() {
   const value = Number(inputDiameter.value)
   if (isNaN(value)) return
 
-  erector.updatePipe(selectedPipe.value.id, 'diameter', value)
+  erector.updatePipe(selectedPipe.value.id, 'diameter', value / 1000)
   // 入力値をストアの値で更新
-  inputDiameter.value = selectedPipe.value.diameter
+  inputDiameter.value = selectedPipe.value.diameter * 1000
 }
 
 function updateConnectionRotation(connectionType: 'start' | 'end' | 'midway', value: number, index?: number) {
