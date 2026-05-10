@@ -31,11 +31,11 @@ type UploadedStructure = {
     }
   }>
   joints: { id: string, name: string }[]
-  rootTransform?: {
+  rootTransforms?: {
     pipeId: string
     position: [number, number, number]
     rotation: [number, number, number]
-  }
+  }[]
 }
 
 const fileInput = useTemplateRef('fileInput')
@@ -44,19 +44,18 @@ function download() {
   const a = document.body.appendChild(document.createElement('a'))
   const erector = useErectorPipeJoint()
 
-  // Get root pipe transform if available
-  let rootTransform = null
-  if (erector.pipes.length > 0) {
-    const rootPipeId = erector.pipes[0].id
-    const rootInstance = erector.instances.find(i => i.id === rootPipeId)?.obj
-    if (rootInstance) {
-      rootTransform = {
+  // Get root pipe transforms if available
+  const rootTransforms = erector.rootPipeIds
+    .map(rootPipeId => {
+      const rootInstance = erector.instances.find(i => i.id === rootPipeId)?.obj
+      if (!rootInstance) return null
+      return {
         pipeId: rootPipeId,
         position: [rootInstance.position.x, rootInstance.position.y, rootInstance.position.z].map(v => v * 1000) as [number, number, number],
         rotation: [rootInstance.rotation.x, rootInstance.rotation.y, rootInstance.rotation.z].map(v => v * 180 / Math.PI) as [number, number, number]
       }
-    }
-  }
+    })
+    .filter((transform): transform is { pipeId: string, position: [number, number, number], rotation: [number, number, number] } => transform !== null)
 
   const pipes = erector.pipes.map(pipe => ({
     ...pipe,
@@ -80,7 +79,7 @@ function download() {
         name: joint.name
       }
     }),
-    ...(rootTransform && { rootTransform })
+    ...(rootTransforms.length > 0 && { rootTransforms })
   }
   const data = new Blob([JSON.stringify(output, null, 4)], { type: 'application/json' })
   a.href = URL.createObjectURL(data)
@@ -112,13 +111,19 @@ function handleFileUpload(event: Event) {
         return
       }
 
-      // Validate rootTransform if present
-      if (structure.rootTransform) {
-        const rt = structure.rootTransform
-        if (!rt.pipeId || !Array.isArray(rt.position) || rt.position.length !== 3 ||
-          !Array.isArray(rt.rotation) || rt.rotation.length !== 3) {
-          console.warn('Invalid rootTransform format, ignoring.')
-          delete structure.rootTransform
+      // Validate rootTransforms if present
+      if (structure.rootTransforms) {
+        if (!Array.isArray(structure.rootTransforms)) {
+          console.warn('Invalid rootTransforms format, ignoring.')
+          delete structure.rootTransforms
+        } else {
+          structure.rootTransforms = structure.rootTransforms.filter(rt =>
+            !!rt.pipeId &&
+            Array.isArray(rt.position) &&
+            rt.position.length === 3 &&
+            Array.isArray(rt.rotation) &&
+            rt.rotation.length === 3
+          )
         }
       }
 
@@ -137,12 +142,12 @@ function handleFileUpload(event: Event) {
             }))
           }
         })),
-        ...(structure.rootTransform
+        ...(structure.rootTransforms
           ? {
-            rootTransform: {
-              ...structure.rootTransform,
-              position: structure.rootTransform.position.map((v: number) => v / 1000) as [number, number, number]
-            }
+            rootTransforms: structure.rootTransforms.map(rt => ({
+              ...rt,
+              position: rt.position.map((v: number) => v / 1000) as [number, number, number]
+            }))
           }
           : {})
       }
