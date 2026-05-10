@@ -755,7 +755,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
                       .multiply(new Quaternion().setFromEuler(new Euler(0, 0, degreesToRadians(conn.rotation)))).invert())
                   const position = pipeTransform.position.clone()
                     .add(new Vector3(0, 0, 1).applyQuaternion(pipeTransform.rotation).multiplyScalar(clampMidwayPosition(conn.position, pipe.length)))
-                    .add(hole.offset.clone().applyQuaternion(rotation))
+                    .add(hole.offset.clone().negate().applyQuaternion(rotation))
                   const target = instances.find(i => i.id === joint.id)?.obj;
                   target?.position.set(...position.toArray())
                   target?.quaternion.copy(rotation)
