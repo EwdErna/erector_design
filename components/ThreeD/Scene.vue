@@ -5,7 +5,7 @@
 </template>
 
 <script lang="ts" setup>
-import { AmbientLight, AxesHelper, DirectionalLight, GridHelper, PerspectiveCamera, Scene, WebGLRenderer, Color, Vector2, Raycaster, Quaternion, Vector3, Euler, Object3D, Mesh } from 'three';
+import { AmbientLight, AxesHelper, DirectionalLight, GridHelper, PerspectiveCamera, Scene, WebGLRenderer, Color, Vector2, Raycaster, Quaternion, Vector3, Object3D, Mesh } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/Addons.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { ErectorPipe } from '~/types/erector_component';
@@ -167,11 +167,11 @@ const animate = (scene: Scene) => {
   if (erector.rootPipeObjects.length > 0) {
     const calculatePosition = erector.calculateWorldPosition()
     calculatePosition(erector.rootPipeIds.map(rootPipeId => {
-      const rootPipeObject = erector.instances.find(i => i.id === rootPipeId)?.obj
+      const rootPipeObject = erector.instanceObjectMap.get(rootPipeId)
       return {
         id: rootPipeId,
         position: rootPipeObject?.position.clone() ?? new Vector3(),
-        rotation: rootPipeObject?.quaternion.clone() ?? new Quaternion().setFromEuler(new Euler(0, 0, 0))
+        rotation: rootPipeObject?.quaternion.clone() ?? new Quaternion()
       }
     }))
   }

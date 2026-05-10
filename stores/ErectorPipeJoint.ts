@@ -388,17 +388,15 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       })
       // Apply root transforms if provided
       if (structure.rootTransforms && structure.rootTransforms.length > 0) {
-        const rootPipeIds: string[] = []
+        const rootPipeIds = new Set<string>()
         structure.rootTransforms.forEach(rootTransform => {
           const rootPipe = this.pipes.find(p => p.id === rootTransform.pipeId)
           if (!rootPipe) return
           this.updateObjectPosition(rootTransform.pipeId, rootTransform.position)
           this.updateObjectRotation(rootTransform.pipeId, rootTransform.rotation)
-          if (!rootPipeIds.includes(rootTransform.pipeId)) {
-            rootPipeIds.push(rootTransform.pipeId)
-          }
+          rootPipeIds.add(rootTransform.pipeId)
         })
-        this.rootPipeIds = rootPipeIds
+        this.rootPipeIds = Array.from(rootPipeIds)
       }
       this.syncRootPipeIds()
 
@@ -769,14 +767,16 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       }
 
       return (rootTransforms: transform[]) => {// 構造のrootとなるpipeのidと座標・回転を受け取る
+        const updatedSet = new Set(updated)
         rootTransforms.forEach(rootTransform => {
           const root = this.pipes.find(pipe => pipe.id === rootTransform.id)
           if (!root) return
           const rootObject = this.instances.find(i => i.id === rootTransform.id)?.obj
           rootObject?.position.set(...rootTransform.position.toArray())
           rootObject?.quaternion.copy(rootTransform.rotation)
-          if (!updated.includes(root.id)) {
+          if (!updatedSet.has(root.id)) {
             updated.push(root.id)
+            updatedSet.add(root.id)
           }
           if (!nextUpdate.includes(root.id)) {
             nextUpdate.push(root.id)
@@ -1232,8 +1232,13 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
     },
   },
   getters: {
+    instanceObjectMap(): Map<string, Object3D | undefined> {
+      return new Map(this.instances.map(instance => [instance.id, instance.obj]))
+    },
     rootPipeObjects(): Object3D[] {
-      return this.rootPipeIds.map(id => this.instances.find(i => i.id === id)?.obj).filter((obj): obj is Object3D => obj !== undefined)
+      return this.rootPipeIds
+        .map(id => this.instanceObjectMap.get(id))
+        .filter((obj): obj is Object3D => obj !== undefined)
     },
     newPipeId(): string {
       const existing_id = this.pipes.map(v => Number.parseInt(v.id.split('_')[1], 10));

@@ -40,6 +40,19 @@ type UploadedStructure = {
 
 const fileInput = useTemplateRef('fileInput')
 
+const isValidRootTransform = (value: unknown): value is { pipeId: string, position: [number, number, number], rotation: [number, number, number] } => {
+  const isNumberTuple3 = (arr: unknown): arr is [number, number, number] =>
+    Array.isArray(arr) &&
+    arr.length === 3 &&
+    arr.every(v => typeof v === 'number' && Number.isFinite(v))
+
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as { pipeId?: unknown, position?: unknown, rotation?: unknown }
+  return typeof candidate.pipeId === 'string'
+    && isNumberTuple3(candidate.position)
+    && isNumberTuple3(candidate.rotation)
+}
+
 function download() {
   const a = document.body.appendChild(document.createElement('a'))
   const erector = useErectorPipeJoint()
@@ -117,13 +130,7 @@ function handleFileUpload(event: Event) {
           console.warn('Invalid rootTransforms format, ignoring.')
           delete structure.rootTransforms
         } else {
-          structure.rootTransforms = structure.rootTransforms.filter(rt =>
-            !!rt.pipeId &&
-            Array.isArray(rt.position) &&
-            rt.position.length === 3 &&
-            Array.isArray(rt.rotation) &&
-            rt.rotation.length === 3
-          )
+          structure.rootTransforms = structure.rootTransforms.filter(isValidRootTransform)
         }
       }
 
