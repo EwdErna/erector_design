@@ -37,6 +37,7 @@ export type ErectorPipeConnection = {
   holeId: number,
   rotation: number, // pipeに対するjointの回転角度
   position: number, // throughの場合のjointの位置（pipe始端からの距離[m]）。fixなら無視
+  reverse?: boolean, // throughの場合にjointの向きを逆にする
 }
 export type ErectorPipe = {
   id: string,

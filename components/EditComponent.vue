@@ -105,6 +105,10 @@
             <input type="number" v-model="inputConnMidwayPositions[i]" min="0" :max="selectedPipe.length * 1000" step="1"
               @change="updateConnectionPosition(i, inputConnMidwayPositions[i])">
           </div>
+          <div>Reverse:
+            <input type="checkbox" v-model="inputConnMidwayReverse[i]"
+              @change="updateConnectionReverse(i, inputConnMidwayReverse[i])">
+          </div>
         </div>
       </div>
       <div>
@@ -163,6 +167,7 @@ const inputConnStartRotation = ref(0)
 const inputConnEndRotation = ref(0)
 const inputConnMidwayRotations = ref<number[]>([])
 const inputConnMidwayPositions = ref<number[]>([])
+const inputConnMidwayReverse = ref<boolean[]>([])
 
 // 現在の位置と回転を取得するcomputed値
 const currentPosition = computed(() => {
@@ -275,6 +280,15 @@ function updateConnectionPosition(index: number, value: number) {
     inputConnMidwayPositions.value[index] = (conn.position || 0) * 1000
   }
 }
+
+function updateConnectionReverse(index: number, value: boolean) {
+  if (!selectedPipe.value || !connMidway.value) return
+  const conn = connMidway.value[index]
+  if (conn) {
+    erector.updateConnection(conn.id, { reverse: value || undefined })
+    inputConnMidwayReverse.value[index] = conn.reverse ?? false
+  }
+}
 const connStart = computed(() => selectedPipe.value?.connections.start)
 const connStartJoint = computed(() => erector.joints.find(j => j.id === connStart.value?.jointId))
 const connEnd = computed(() => selectedPipe.value?.connections.end)
@@ -302,9 +316,11 @@ watch([connStart, connEnd, connMidway], () => {
   if (connMidway.value) {
     inputConnMidwayRotations.value = connMidway.value.map(conn => conn.rotation || 0)
     inputConnMidwayPositions.value = connMidway.value.map(conn => (conn.position || 0) * 1000)
+    inputConnMidwayReverse.value = connMidway.value.map(conn => conn.reverse ?? false)
   } else {
     inputConnMidwayRotations.value = []
     inputConnMidwayPositions.value = []
+    inputConnMidwayReverse.value = []
   }
 }, { immediate: true, deep: true })
 
@@ -350,7 +366,7 @@ function updateConnection(event: Event, pipeId: string, id: string, key: keyof E
   // 値を適切に設定
   if (key === 'jointId' || key === 'id') {
     updateObj[key] = value;
-  } else {
+  } else if (key !== 'reverse') {
     updateObj[key] = Number.parseFloat(value);
   }
 
