@@ -5,7 +5,7 @@
 </template>
 
 <script lang="ts" setup>
-import { AmbientLight, AxesHelper, DirectionalLight, GridHelper, PerspectiveCamera, Scene, WebGLRenderer, Color, Vector2, Raycaster, Quaternion, Vector3, Euler, Object3D, Mesh } from 'three';
+import { AmbientLight, AxesHelper, DirectionalLight, GridHelper, PerspectiveCamera, Scene, WebGLRenderer, Color, Vector2, Raycaster, Quaternion, Vector3, Object3D, Mesh } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/Addons.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { ErectorPipe } from '~/types/erector_component';
@@ -149,10 +149,10 @@ const setupScene = () => {
   scene.add(axesHelper)
 
   erector.loadFromStructure(erector_structure)
-  // Apply initial rotation to the root pipe object
-  if (erector.rootPipeObject) {
-    erector.rootPipeObject.rotation.set(0, degreesToRadians(40), 0)
-  }
+  // Apply initial rotation to root pipe objects
+  erector.rootPipeObjects.forEach(rootPipeObject => {
+    rootPipeObject.rotation.set(0, degreesToRadians(40), 0)
+  })
 
   const ambientLight = new AmbientLight(0xffffff, 0.5)
   scene.add(ambientLight)
@@ -163,19 +163,17 @@ const setupScene = () => {
 }
 const animate = (scene: Scene) => {
   if (!scene) return;
-  if (!erector.pipes.find(p => p.id === erector.rootPipeId)) {
-    if (erector.pipes.length === 0) {
-      //console.log("No pipes in erector")
-    } else {
-      console.log("rootPipeId not found in erector pipes, resetting to first instance")
-      erector.rootPipeId = erector.instances[0].id
-    }
-  }
-  if (erector.rootPipeObject) {
+  erector.syncRootPipeIds()
+  if (erector.rootPipeObjects.length > 0) {
     const calculatePosition = erector.calculateWorldPosition()
-    calculatePosition({
-      id: erector.rootPipeId, position: erector.rootPipeObject?.position.clone() ?? new Vector3(), rotation: new Quaternion().setFromEuler(erector.rootPipeObject?.rotation ?? new Euler(0, 0, 0))
-    })
+    calculatePosition(erector.rootPipeIds.map(rootPipeId => {
+      const rootPipeObject = erector.instanceObjectMap.get(rootPipeId)
+      return {
+        id: rootPipeId,
+        position: rootPipeObject?.position.clone() ?? new Vector3(),
+        rotation: rootPipeObject?.quaternion.clone() ?? new Quaternion()
+      }
+    }))
   }
 
   // OrbitControlsの更新

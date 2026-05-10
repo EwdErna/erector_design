@@ -78,12 +78,58 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
     renderCount: 0,
     pipeJointRelationships: [] as PipeJointRelationship[],
     invalidConnections: [] as InvalidConnection[],
-    rootPipeId: '' as string,
+    rootPipeIds: [] as string[],
     debugArrows: [] as ArrowHelper[], // デバッグ用の矢印オブジェクト
     lastModifiedConnectionId: null as string | null,
     autoResolveConflicts: false as boolean,
   }),
   actions: {
+    getDefaultRootPipeIds(): string[] {
+      const visited = new Set<string>()
+      const roots: string[] = []
+
+      for (const pipe of this.pipes) {
+        if (visited.has(pipe.id)) continue
+
+        roots.push(pipe.id)
+        const queue: string[] = [pipe.id]
+        visited.add(pipe.id)
+
+        while (queue.length > 0) {
+          const currentPipeId = queue.shift()
+          if (!currentPipeId) continue
+          const currentPipe = this.pipes.find(p => p.id === currentPipeId)
+          if (!currentPipe) continue
+
+          const jointIds = [
+            currentPipe.connections.start?.jointId,
+            currentPipe.connections.end?.jointId,
+            ...currentPipe.connections.midway.map(conn => conn.jointId)
+          ].filter((id): id is string => typeof id === 'string')
+
+          for (const jointId of jointIds) {
+            for (const candidate of this.pipes) {
+              const connected =
+                candidate.connections.start?.jointId === jointId ||
+                candidate.connections.end?.jointId === jointId ||
+                candidate.connections.midway.some(conn => conn.jointId === jointId)
+              if (connected && !visited.has(candidate.id)) {
+                visited.add(candidate.id)
+                queue.push(candidate.id)
+              }
+            }
+          }
+        }
+      }
+
+      return roots
+    },
+    syncRootPipeIds() {
+      const existingPipeIds = new Set(this.pipes.map(pipe => pipe.id))
+      const validRootPipeIds = this.rootPipeIds.filter(id => existingPipeIds.has(id))
+      const autoRoots = this.getDefaultRootPipeIds().filter(id => !validRootPipeIds.includes(id))
+      this.rootPipeIds = [...validRootPipeIds, ...autoRoots]
+    },
     addPipe(scene: Scene, diameter: number, length: number, id?: string) {//pipeの存在だけを追加
       if (!id) id = this.newPipeId
       if (!this.pipes.some(p => p.id === id)) {
@@ -286,9 +332,9 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       this.instances = []
       this.pipeJointRelationships = []
       this.renderCount = 0
-      this.rootPipeId = ''
+      this.rootPipeIds = []
     },
-    loadFromStructure(structure: { pipes: ErectorPipe[], joints: { id: string, name: string }[], rootTransform?: { pipeId: string, position: [number, number, number], rotation: [number, number, number] } }) {
+    loadFromStructure(structure: { pipes: ErectorPipe[], joints: { id: string, name: string }[], rootTransforms?: { pipeId: string, position: [number, number, number], rotation: [number, number, number] }[] }) {
       // Clear all existing pipes and joints before loading new structure
       this.clearAll()
 
@@ -340,16 +386,19 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
           } else this.addConnection(pipe.id, conn.jointId, conn.holeId, "midway", conn.rotation, conn.position)
         })
       })
-      // Apply root transform if provided
-      if (structure.rootTransform) {
-        const rootPipeId = structure.rootTransform.pipeId
-        this.updateObjectPosition(rootPipeId, structure.rootTransform.position)
-        this.updateObjectRotation(rootPipeId, structure.rootTransform.rotation)
-        this.rootPipeId = rootPipeId
-      } else {
-        // Set the first pipe as root if no root transform is provided
-        this.rootPipeId = structure.pipes.length > 0 ? structure.pipes[0].id : ''
+      // Apply root transforms if provided
+      if (structure.rootTransforms && structure.rootTransforms.length > 0) {
+        const rootPipeIds = new Set<string>()
+        structure.rootTransforms.forEach(rootTransform => {
+          const rootPipe = this.pipes.find(p => p.id === rootTransform.pipeId)
+          if (!rootPipe) return
+          this.updateObjectPosition(rootTransform.pipeId, rootTransform.position)
+          this.updateObjectRotation(rootTransform.pipeId, rootTransform.rotation)
+          rootPipeIds.add(rootTransform.pipeId)
+        })
+        this.rootPipeIds = Array.from(rootPipeIds)
       }
+      this.syncRootPipeIds()
 
       // 変更を加えたので再validate
       this.validateConnections()
@@ -717,14 +766,22 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
         }
       }
 
-      return (rootTransform: transform) => {// 構造のrootとなるpipeのidと座標・回転を受け取る
-        const root = this.pipes.find(pipe => pipe.id === rootTransform.id)
-        if (!root) return
-        const rootObject = this.instances.find(i => i.id === rootTransform.id)?.obj
-        rootObject?.position.set(...rootTransform.position.toArray())
-        rootObject?.quaternion.copy(rootTransform.rotation)
-        updated.push(root.id)
-        nextUpdate.push(root.id)
+      return (rootTransforms: transform[]) => {// 構造のrootとなるpipeのidと座標・回転を受け取る
+        const updatedSet = new Set(updated)
+        rootTransforms.forEach(rootTransform => {
+          const root = this.pipes.find(pipe => pipe.id === rootTransform.id)
+          if (!root) return
+          const rootObject = this.instances.find(i => i.id === rootTransform.id)?.obj
+          rootObject?.position.set(...rootTransform.position.toArray())
+          rootObject?.quaternion.copy(rootTransform.rotation)
+          if (!updatedSet.has(root.id)) {
+            updated.push(root.id)
+            updatedSet.add(root.id)
+          }
+          if (!nextUpdate.includes(root.id)) {
+            nextUpdate.push(root.id)
+          }
+        })
         while (nextUpdate.length > 0) {
           const pipeId = nextUpdate.shift()
           if (!pipeId) continue
@@ -1059,6 +1116,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       if (pipeIndex !== -1) {
         this.pipes.splice(pipeIndex, 1);
       }
+      this.syncRootPipeIds()
 
       // 3Dオブジェクトのインスタンスを削除
       const instanceIndex = this.instances.findIndex(i => i.id === pipeId);
@@ -1174,9 +1232,13 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
     },
   },
   getters: {
-    rootPipeObject(): Object3D | undefined {
-      if (!this.rootPipeId) return undefined
-      return this.instances.find(i => i.id === this.rootPipeId)?.obj
+    instanceObjectMap(): Map<string, Object3D | undefined> {
+      return new Map(this.instances.map(instance => [instance.id, instance.obj]))
+    },
+    rootPipeObjects(): Object3D[] {
+      return this.rootPipeIds
+        .map(id => this.instanceObjectMap.get(id))
+        .filter((obj): obj is Object3D => obj !== undefined)
     },
     newPipeId(): string {
       const existing_id = this.pipes.map(v => Number.parseInt(v.id.split('_')[1], 10));
