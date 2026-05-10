@@ -7,9 +7,9 @@
       <hr>
       <div v-if="selectedObject?.obj">
         <div>
-          position(mm): <input type="number" v-model="inputPosition[0]" @change="updatePosition(0, inputPosition[0])">,
-          <input type="number" v-model="inputPosition[1]" @change="updatePosition(1, inputPosition[1])">,
-          <input type="number" v-model="inputPosition[2]" @change="updatePosition(2, inputPosition[2])">
+          position(mm): <input type="number" aria-label="position x (mm)" v-model="inputPosition[0]" @change="updatePosition(0, inputPosition[0])">,
+          <input type="number" aria-label="position y (mm)" v-model="inputPosition[1]" @change="updatePosition(1, inputPosition[1])">,
+          <input type="number" aria-label="position z (mm)" v-model="inputPosition[2]" @change="updatePosition(2, inputPosition[2])">
         </div>
         <div>
           rotation: <input type="number" v-model="inputRotation[0]" @change="updateRotation(0, inputRotation[0])">,
@@ -124,9 +124,9 @@
       <hr>
       <div v-if="selectedObject?.obj">
         <div>
-          position(mm): <input type="number" v-model="inputPosition[0]" @change="updatePosition(0, inputPosition[0])">,
-          <input type="number" v-model="inputPosition[1]" @change="updatePosition(1, inputPosition[1])">,
-          <input type="number" v-model="inputPosition[2]" @change="updatePosition(2, inputPosition[2])">
+          position(mm): <input type="number" aria-label="position x (mm)" v-model="inputPosition[0]" @change="updatePosition(0, inputPosition[0])">,
+          <input type="number" aria-label="position y (mm)" v-model="inputPosition[1]" @change="updatePosition(1, inputPosition[1])">,
+          <input type="number" aria-label="position z (mm)" v-model="inputPosition[2]" @change="updatePosition(2, inputPosition[2])">
         </div>
         <div>
           rotation: <input type="number" v-model="inputRotation[0]" @change="updateRotation(0, inputRotation[0])">,

@@ -20,6 +20,7 @@
 import type { ErectorPipe } from '~/types/erector_component'
 
 type UploadedStructure = {
+  // User-facing JSON uses millimeters for numeric length/position values.
   pipes: ErectorPipe[]
   joints: { id: string, name: string }[]
   rootTransform?: {
