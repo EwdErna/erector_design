@@ -287,7 +287,7 @@ function updateConnectionReverse(index: number, value: boolean) {
   const conn = connMidway.value[index]
   if (!conn) return
   erector.updateConnection(conn.id, { reverse: value })
-  inputConnMidwayReverses.value[index] = conn.reverse === true
+  inputConnMidwayReverses.value[index] = value
 }
 
 function onMidwayReverseChange(index: number, event: Event) {

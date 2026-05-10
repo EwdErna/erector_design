@@ -70,6 +70,7 @@ function clampMidwayPosition(position: number, pipeLength: number): number {
   return Math.max(0, Math.min(pipeLength, position))
 }
 
+// midway の THROUGH 接続を逆向きにする場合、pipeローカルY軸で 180° 反転させる。
 function getMidwayReverseQuaternion(connection: ErectorPipeConnection): Quaternion {
   return connection.reverse === true
     ? new Quaternion().setFromEuler(new Euler(0, Math.PI, 0))
@@ -378,14 +379,14 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
           const startConnection = this.pipes.find(p => p.id === pipe.id)?.connections.start
           if (startConnection) {
             //既に接続済み。BAD STRUCTURE
-          } else this.addConnection(pipe.id, pipe.connections.start.jointId, pipe.connections.start.holeId, "start", pipe.connections.start.rotation, pipe.connections.start.position, pipe.connections.start.id, pipe.connections.start.reverse)
+          } else this.addConnection(pipe.id, pipe.connections.start.jointId, pipe.connections.start.holeId, "start", pipe.connections.start.rotation, pipe.connections.start.position, pipe.connections.start.id)
         }
         if (pipe.connections.end) {
           jointInstanciate(pipe.connections.end)
           const endConnection = this.pipes.find(p => p.id === pipe.id)?.connections.end
           if (endConnection) {
             //既に接続済み。BAD STRUCTURE
-          } else this.addConnection(pipe.id, pipe.connections.end.jointId, pipe.connections.end.holeId, "end", pipe.connections.end.rotation, pipe.connections.end.position, pipe.connections.end.id, pipe.connections.end.reverse)
+          } else this.addConnection(pipe.id, pipe.connections.end.jointId, pipe.connections.end.holeId, "end", pipe.connections.end.rotation, pipe.connections.end.position, pipe.connections.end.id)
         } pipe.connections.midway.forEach(conn => {
           jointInstanciate(conn)
           const midwayConnection = this.pipes.find(p => p.id === pipe.id)?.connections.midway
