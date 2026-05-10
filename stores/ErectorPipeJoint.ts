@@ -14,6 +14,13 @@ export type PipeJointRelationship = {
   relationshipType: 'j2p' | 'p2j' // j2p: joint determines pipe, p2j: pipe determines joint
 }
 
+export type RootConflict = {
+  /** この連結成分に属する全パイプID */
+  componentPipeIds: string[]
+  /** この成分内で rootPipeIds に登録されている（競合している）パイプID */
+  conflictingRootIds: string[]
+}
+
 type InvalidConnection = {
   id: string
   pipeId: string
@@ -79,25 +86,31 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
     pipeJointRelationships: [] as PipeJointRelationship[],
     invalidConnections: [] as InvalidConnection[],
     rootPipeIds: [] as string[],
+    rootConflicts: [] as RootConflict[],
     debugArrows: [] as ArrowHelper[], // デバッグ用の矢印オブジェクト
     lastModifiedConnectionId: null as string | null,
     autoResolveConflicts: false as boolean,
   }),
   actions: {
-    getDefaultRootPipeIds(): string[] {
+    /**
+     * 全パイプをジョイント接続をエッジとして連結成分に分割し、
+     * 各成分のパイプIDリストの配列を返す
+     */
+    getConnectedComponents(): string[][] {
       const visited = new Set<string>()
-      const roots: string[] = []
+      const components: string[][] = []
 
       for (const pipe of this.pipes) {
         if (visited.has(pipe.id)) continue
 
-        roots.push(pipe.id)
+        const component: string[] = []
         const queue: string[] = [pipe.id]
         visited.add(pipe.id)
 
         while (queue.length > 0) {
           const currentPipeId = queue.shift()
           if (!currentPipeId) continue
+          component.push(currentPipeId)
           const currentPipe = this.pipes.find(p => p.id === currentPipeId)
           if (!currentPipe) continue
 
@@ -120,9 +133,43 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
             }
           }
         }
+
+        components.push(component)
       }
 
-      return roots
+      return components
+    },
+    getDefaultRootPipeIds(): string[] {
+      return this.getConnectedComponents().map(component => component[0])
+    },
+    /**
+     * rootPipeIds を検査し、同一連結成分に2本以上の root があるケースを
+     * rootConflicts に記録する
+     */
+    detectRootConflicts() {
+      const components = this.getConnectedComponents()
+      const conflicts: RootConflict[] = []
+
+      for (const component of components) {
+        const rootsInComponent = this.rootPipeIds.filter(id => component.includes(id))
+        if (rootsInComponent.length > 1) {
+          conflicts.push({
+            componentPipeIds: component,
+            conflictingRootIds: rootsInComponent,
+          })
+        }
+      }
+
+      this.rootConflicts = conflicts
+    },
+    /**
+     * Root競合を解決する。keepPipeId を root として残し、
+     * conflictingRootIds 内のそれ以外を rootPipeIds から取り除く
+     */
+    resolveRootConflict(keepPipeId: string, conflictingRootIds: string[]) {
+      const toRemove = new Set(conflictingRootIds.filter(id => id !== keepPipeId))
+      this.rootPipeIds = this.rootPipeIds.filter(id => !toRemove.has(id))
+      this.detectRootConflicts()
     },
     syncRootPipeIds() {
       const existingPipeIds = new Set(this.pipes.map(pipe => pipe.id))
@@ -333,6 +380,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       this.pipeJointRelationships = []
       this.renderCount = 0
       this.rootPipeIds = []
+      this.rootConflicts = []
     },
     loadFromStructure(structure: { pipes: ErectorPipe[], joints: { id: string, name: string }[], rootTransforms?: { pipeId: string, position: [number, number, number], rotation: [number, number, number] }[] }) {
       // Clear all existing pipes and joints before loading new structure
@@ -998,6 +1046,8 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
 
       // デバッグ用: 無効な接続を可視化
       this.visualizeInvalidConnections()
+      // Root競合を検出して rootConflicts に記録する
+      this.detectRootConflicts()
     },
     resolveByDisconnect(connectionId: string) {
       this.removeConnection(connectionId)
