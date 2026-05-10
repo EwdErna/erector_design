@@ -17,6 +17,19 @@
 </template>
 
 <script lang="ts" setup>
+import type { ErectorPipe } from '~/types/erector_component'
+
+type UploadedStructure = {
+  // User-facing JSON uses millimeters for numeric length/position values.
+  pipes: ErectorPipe[]
+  joints: { id: string, name: string }[]
+  rootTransform?: {
+    pipeId: string
+    position: [number, number, number]
+    rotation: [number, number, number]
+  }
+}
+
 const fileInput = useTemplateRef('fileInput')
 
 function download() {
@@ -31,14 +44,20 @@ function download() {
     if (rootInstance) {
       rootTransform = {
         pipeId: rootPipeId,
-        position: [rootInstance.position.x, rootInstance.position.y, rootInstance.position.z] as [number, number, number],
+        position: [rootInstance.position.x, rootInstance.position.y, rootInstance.position.z].map(v => v * 1000) as [number, number, number],
         rotation: [rootInstance.rotation.x, rootInstance.rotation.y, rootInstance.rotation.z].map(v => v * 180 / Math.PI) as [number, number, number]
       }
     }
   }
 
+  const pipes = erector.pipes.map(pipe => ({
+    ...pipe,
+    diameter: pipe.diameter * 1000,
+    length: pipe.length * 1000
+  }))
+
   const output = {
-    pipes: erector.pipes,
+    pipes,
     joints: erector.joints.map(joint => {
       return {
         id: joint.id,
@@ -69,7 +88,7 @@ function handleFileUpload(event: Event) {
   reader.onload = (e) => {
     try {
       const content = e.target?.result as string
-      const structure = JSON.parse(content)
+      const structure = JSON.parse(content) as UploadedStructure
 
       // Validate structure format
       if (!structure.pipes || !structure.joints || !Array.isArray(structure.pipes) || !Array.isArray(structure.joints)) {
@@ -87,6 +106,23 @@ function handleFileUpload(event: Event) {
         }
       }
 
+      const structureInMeters = {
+        ...structure,
+        pipes: structure.pipes.map((pipe) => ({
+          ...pipe,
+          diameter: pipe.diameter / 1000,
+          length: pipe.length / 1000
+        })),
+        ...(structure.rootTransform
+          ? {
+            rootTransform: {
+              ...structure.rootTransform,
+              position: structure.rootTransform.position.map((v: number) => v / 1000) as [number, number, number]
+            }
+          }
+          : {})
+      }
+
       const erector = useErectorPipeJoint()
       const objectSelection = useObjectSelection()
 
@@ -97,7 +133,7 @@ function handleFileUpload(event: Event) {
       objectSelection.select('')
 
       // Load the new structure
-      erector.loadFromStructure(structure)
+      erector.loadFromStructure(structureInMeters)
 
       console.log('Structure loaded successfully')
     } catch (error) {
