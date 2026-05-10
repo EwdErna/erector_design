@@ -107,7 +107,7 @@ interface PositionGizmoData {
   holeId: number;
   joint: ErectorJoint;
   connection: ErectorPipeConnection;
-  position: number; // [0,1] range
+  position: number; // pipe始端からの距離[m]
 }
 
 type GizmoData = LengthGizmoData | ConnectionGizmoData | PositionGizmoData;
@@ -224,10 +224,7 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
         position = new Vector3(0, 0, this.target.pipe.length)
         break
       case 'midway':
-        // Check if position is relative (0-1) or absolute
-        const midwayPos = connection.position;
-        const absolutePosition = midwayPos <= 1.0 ? midwayPos * this.target.pipe.length : midwayPos;
-        position = new Vector3(0, 0, absolutePosition)
+        position = new Vector3(0, 0, Math.max(0, Math.min(this.target.pipe.length, connection.position)))
         break
     }
 
@@ -552,14 +549,12 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
     // For j2p in pipe controls, reverse the direction to match expected behavior
     const deltaZ = dragStartLocalPos.z - currentLocalPos.z;
 
-    // Convert the Z difference to position change (normalized by pipe length)
-    const positionDelta = deltaZ / this.target.pipe.length;
+    const positionDelta = deltaZ;
 
     // Apply the delta to the starting position
     const newPosition = this.dragStartValue + positionDelta;
 
-    // Clamp to valid range [0, 1]
-    return Math.max(0, Math.min(1, newPosition));
+    return Math.max(0, Math.min(this.target.pipe.length, newPosition));
   }
 
   /**
@@ -573,12 +568,7 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
     const pipeWorldToLocal = this.target.object.worldToLocal.bind(this.target.object);
     const currentLocalPos = pipeWorldToLocal(currentIntersection.clone());
 
-    // Calculate position as ratio from start (0) to end (1) of the pipe
-    // Clamp the Z position to pipe bounds [0, pipe.length]
-    const clampedZ = Math.max(0, Math.min(this.target.pipe.length, currentLocalPos.z));
-    const newPosition = clampedZ / this.target.pipe.length;
-
-    return newPosition;
+    return Math.max(0, Math.min(this.target.pipe.length, currentLocalPos.z));
   }
 
   private getCurrentMouseIntersection(event: MouseEvent): Vector3 | null {
@@ -674,8 +664,6 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
   private updateConnectionGizmoPositions(data: PositionGizmoData, newPosition: number) {
     if (!this.target) return;
 
-    const absolutePosition = newPosition * this.target.pipe.length;
-
     // Update both the position gizmo and rotation gizmo for this connection
     this.gizmos.forEach(gizmo => {
       const gizmoData = gizmo.userData as GizmoData;
@@ -684,7 +672,7 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
       if (gizmoData.type === 'connection-rotation-control') {
         const rotationData = gizmoData as ConnectionGizmoData;
         if (rotationData.connectionId === data.connectionId) {
-          gizmo.position.setZ(absolutePosition);
+          gizmo.position.setZ(newPosition);
         }
       }
     });

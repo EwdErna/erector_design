@@ -21,7 +21,15 @@ import type { ErectorPipe } from '~/types/erector_component'
 
 type UploadedStructure = {
   // User-facing JSON uses millimeters for numeric length/position values.
-  pipes: ErectorPipe[]
+  pipes: Array<ErectorPipe & {
+    diameter: number
+    length: number
+    connections: {
+      start?: ErectorPipe['connections']['start']
+      end?: ErectorPipe['connections']['end']
+      midway: ErectorPipe['connections']['midway']
+    }
+  }>
   joints: { id: string, name: string }[]
   rootTransform?: {
     pipeId: string
@@ -53,7 +61,21 @@ function download() {
   const pipes = erector.pipes.map(pipe => ({
     ...pipe,
     diameter: pipe.diameter * 1000,
-    length: pipe.length * 1000
+    length: pipe.length * 1000,
+    connections: {
+      start: pipe.connections.start ? {
+        ...pipe.connections.start,
+        position: pipe.connections.start.position * 1000
+      } : undefined,
+      end: pipe.connections.end ? {
+        ...pipe.connections.end,
+        position: pipe.connections.end.position * 1000
+      } : undefined,
+      midway: pipe.connections.midway.map(conn => ({
+        ...conn,
+        position: conn.position * 1000
+      }))
+    }
   }))
 
   const output = {
@@ -111,7 +133,21 @@ function handleFileUpload(event: Event) {
         pipes: structure.pipes.map((pipe) => ({
           ...pipe,
           diameter: pipe.diameter / 1000,
-          length: pipe.length / 1000
+          length: pipe.length / 1000,
+          connections: {
+            start: pipe.connections.start ? {
+              ...pipe.connections.start,
+              position: pipe.connections.start.position / 1000
+            } : undefined,
+            end: pipe.connections.end ? {
+              ...pipe.connections.end,
+              position: pipe.connections.end.position / 1000
+            } : undefined,
+            midway: pipe.connections.midway.map(conn => ({
+              ...conn,
+              position: conn.position / 1000
+            }))
+          }
         })),
         ...(structure.rootTransform
           ? {
