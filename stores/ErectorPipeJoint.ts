@@ -40,6 +40,11 @@ type InvalidConnection = {
   conflictingSide?: 'start' | 'end' | 'midway'
 }
 
+type RootMerge = {
+  mergedRoots: string[]    // 同一連結成分に属する root pipe の ID 群（length >= 2）
+  componentPipes: string[] // その連結成分に属する全 pipe の ID 群
+}
+
 // validateConnections のスケジューリング用（ドラッグ中の連続呼び出しをデバウンス）
 let _validationPendingId: number | null = null
 
@@ -82,6 +87,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
     debugArrows: [] as ArrowHelper[], // デバッグ用の矢印オブジェクト
     lastModifiedConnectionId: null as string | null,
     autoResolveConflicts: false as boolean,
+    rootMerges: [] as RootMerge[],
   }),
   actions: {
     getDefaultRootPipeIds(): string[] {
@@ -129,6 +135,40 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       const validRootPipeIds = this.rootPipeIds.filter(id => existingPipeIds.has(id))
       const autoRoots = this.getDefaultRootPipeIds().filter(id => !validRootPipeIds.includes(id))
       this.rootPipeIds = [...validRootPipeIds, ...autoRoots]
+    },
+    buildConnectedComponents(): string[][] {
+      const visited = new Set<string>()
+      const components: string[][] = []
+      for (const pipe of this.pipes) {
+        if (visited.has(pipe.id)) continue
+        const component: string[] = []
+        const queue = [pipe.id]
+        visited.add(pipe.id)
+        while (queue.length > 0) {
+          const currentId = queue.shift()!
+          component.push(currentId)
+          const currentPipe = this.pipes.find(p => p.id === currentId)!
+          const jointIds = [
+            currentPipe.connections.start?.jointId,
+            currentPipe.connections.end?.jointId,
+            ...currentPipe.connections.midway.map(c => c.jointId)
+          ].filter((id): id is string => !!id)
+          for (const jointId of jointIds) {
+            for (const candidate of this.pipes) {
+              const connected =
+                candidate.connections.start?.jointId === jointId ||
+                candidate.connections.end?.jointId === jointId ||
+                candidate.connections.midway.some(c => c.jointId === jointId)
+              if (connected && !visited.has(candidate.id)) {
+                visited.add(candidate.id)
+                queue.push(candidate.id)
+              }
+            }
+          }
+        }
+        components.push(component)
+      }
+      return components
     },
     addPipe(scene: Scene, diameter: number, length: number, id?: string) {//pipeの存在だけを追加
       if (!id) id = this.newPipeId
@@ -1009,11 +1049,26 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
         })
       }
 
+      // root merge 検出: 同一連結成分に複数 root が存在する場合を報告
+      const components = this.buildConnectedComponents()
+      const merges: RootMerge[] = []
+      for (const component of components) {
+        const roots = component.filter(id => this.rootPipeIds.includes(id))
+        if (roots.length >= 2) {
+          merges.push({ mergedRoots: roots, componentPipes: component })
+        }
+      }
+      this.rootMerges = merges
+
       // デバッグ用: 無効な接続を可視化
       this.visualizeInvalidConnections()
     },
     resolveByDisconnect(connectionId: string) {
       this.removeConnection(connectionId)
+      this.validateConnections()
+    },
+    resolveByRemoveRoot(pipeId: string) {
+      this.rootPipeIds = this.rootPipeIds.filter(id => id !== pipeId)
       this.validateConnections()
     },
     resolveByUpdatePosition(connectionId: string) {
