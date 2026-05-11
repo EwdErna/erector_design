@@ -325,8 +325,18 @@ watch([connStart, connEnd, connMidway], () => {
 }, { immediate: true, deep: true })
 
 function addConnectionToSelected(side: 'start' | 'end' | 'midway') {
-  if (!selectedPipe.value || !erector.joints[0]) return
-  erector.addConnection(selectedPipe.value.id, erector.joints[0].id, 0, side)
+  if (!selectedPipe.value || erector.joints.length === 0) return
+  const usedJointIds = new Set(
+    erector.pipes.flatMap(pipe => [
+      pipe.connections.start?.jointId,
+      pipe.connections.end?.jointId,
+      ...pipe.connections.midway.map(c => c.jointId),
+    ]).filter((id): id is string => id !== undefined)
+  )
+  const joint =
+    erector.joints.find(j => !usedJointIds.has(j.id)) ??
+    erector.joints[erector.joints.length - 1]
+  erector.addConnection(selectedPipe.value.id, joint.id, 0, side)
   erector.validateConnections()
 }
 
