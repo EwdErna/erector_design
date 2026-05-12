@@ -411,7 +411,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
           const startConnection = this.pipes.find(p => p.id === pipe.id)?.connections.start
           if (startConnection) {
             //既に接続済み。BAD STRUCTURE
-          } else this.addConnection(pipe.id, pipe.connections.start.jointId, pipe.connections.start.holeId, "start")
+          } else this.addConnection(pipe.id, pipe.connections.start.jointId, pipe.connections.start.holeId, "start", pipe.connections.start.rotation, pipe.connections.start.position)
         }
         if (pipe.connections.end) {
           jointInstanciate(pipe.connections.end)
