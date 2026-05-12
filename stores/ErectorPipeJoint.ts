@@ -642,7 +642,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
                   // For j2p midway connections, we need to position the pipe so that the midway connection
                   // aligns with the joint hole at the specified position along the pipe
                   const flipQ = midway.reverse
-                    ? new Quaternion().setFromEuler(new Euler(0, Math.PI, 0))
+                    ? new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0).applyQuaternion(hole.dir), Math.PI)
                     : new Quaternion()
                   const rotation = jointInstance.quaternion.clone()
                     .multiply(flipQ.clone().multiply(hole.dir.clone()
@@ -796,7 +796,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
                     joint.transform.position = transform.position + transform.forward * (pipeLength / 1000f * conn.axis_pos / 100f) + r * -hole.offset;
                    */
                   const flipQ = conn.reverse
-                    ? new Quaternion().setFromEuler(new Euler(0, Math.PI, 0))
+                    ? new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0).applyQuaternion(hole.dir), Math.PI)
                     : new Quaternion()
                   const rotation = pipeTransform.rotation.clone()
                     .multiply(flipQ.clone().multiply(hole.dir.clone()
@@ -979,7 +979,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
               const holePosDiff = actualHolePos.distanceTo(expectedHolePos)
 
               const flipQ = conn.reverse
-                ? new Quaternion().setFromEuler(new Euler(0, Math.PI, 0))
+                ? new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0).applyQuaternion(hole.dir), Math.PI)
                 : new Quaternion()
               const actualHoleDir = new Vector3(0, 0, 1)
                 .applyQuaternion(jointInstance.quaternion.clone().multiply(flipQ).multiply(hole.dir))
