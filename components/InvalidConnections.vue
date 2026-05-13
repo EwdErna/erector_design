@@ -65,6 +65,13 @@
             v-if="connection.rightFix"
             @click="erector.resolveByRotationFix(connection.rightFix!.connectionId, connection.rightFix!.newRotation)"
           >right 修正: {{ connection.rightFix!.pipeId }} [{{ connection.rightFix!.side }}] rotation → {{ connection.rightFix!.newRotation }}°</button>
+          <template v-if="connection.lengthFixes?.length">
+            <button
+              v-for="fix in connection.lengthFixes"
+              :key="fix.pipeId"
+              @click="erector.resolveByLengthFix(fix.pipeId, fix.newLength)"
+            >{{ fix.pipeId }} length: {{ fix.currentLength.toFixed(3) }}m → {{ fix.newLength.toFixed(3) }}m</button>
+          </template>
         </div>
       </div>
     </template>

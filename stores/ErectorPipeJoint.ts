@@ -22,6 +22,12 @@ type RotationFix = {
   newRotation: number
 }
 
+type LengthFix = {
+  pipeId: string
+  currentLength: number
+  newLength: number
+}
+
 type InvalidConnection = {
   id: string
   pipeId: string
@@ -48,6 +54,7 @@ type InvalidConnection = {
   conflictingSide?: 'start' | 'end' | 'midway'
   rotationFixes?: RotationFix[]
   rightFix?: RotationFix
+  lengthFixes?: LengthFix[]
 }
 
 type RootMerge = {
@@ -120,6 +127,63 @@ function isReachableExcludingPipe(
         if (!visitedJoints.has(jId)) {
           visitedJoints.add(jId)
           queue.push(jId)
+        }
+      }
+    }
+  }
+  return false
+}
+
+/**
+ * fromJointId から p2j チェーン（j2p 接続で動く pipe → その pipe の非 j2p joints）を
+ * 有向 BFS で辿り、targetJointId に到達できるか判定する。
+ * length 変更で「動く側」のジョイントが conflict ジョイントを引き連れて移動するかの確認に使う。
+ *
+ * 注: calculateWorldPosition は競合 joint の p2j 関係を記録しないため、
+ * pipeJointRelationships のみでは辿れない。pipe 接続リストから直接 j2p アンカー以外の
+ * joint を列挙することで競合ケースを含めて正しく判定する。
+ */
+function isReachableDirected(
+  fromJointId: string,
+  targetJointId: string,
+  pipes: ErectorPipe[],
+  pipeJointRelationships: PipeJointRelationship[]
+): boolean {
+  if (fromJointId === targetJointId) return true
+  const visitedJoints = new Set<string>([fromJointId])
+  const queue: string[] = [fromJointId]
+
+  while (queue.length > 0) {
+    const currentJointId = queue.shift()!
+    // currentJointId が j2p 接続しているパイプ群（ジョイントがパイプを決定している）
+    const drivenPipeIds = pipeJointRelationships
+      .filter(r => r.jointId === currentJointId && r.relationshipType === 'j2p')
+      .map(r => r.pipeId)
+
+    for (const pipeId of drivenPipeIds) {
+      const pipe = pipes.find(p => p.id === pipeId)
+      if (!pipe) continue
+
+      // このパイプを固定しているジョイント群（j2p アンカー）
+      const j2pAnchors = new Set(
+        pipeJointRelationships
+          .filter(r => r.pipeId === pipeId && r.relationshipType === 'j2p')
+          .map(r => r.jointId)
+      )
+
+      // パイプが決定しているジョイント群 = 全接続ジョイット − j2p アンカー
+      // （競合 joint は p2j 記録が省略されるため pipes から直接取得）
+      const movableJointIds = [
+        pipe.connections.start?.jointId,
+        pipe.connections.end?.jointId,
+        ...pipe.connections.midway.map(c => c.jointId)
+      ].filter((id): id is string => !!id && !j2pAnchors.has(id))
+
+      for (const jointId of movableJointIds) {
+        if (jointId === targetJointId) return true
+        if (!visitedJoints.has(jointId)) {
+          visitedJoints.add(jointId)
+          queue.push(jointId)
         }
       }
     }
@@ -238,6 +302,56 @@ function computeRightFix(
     currentRotation: conn.rotation,
     newRotation: roundAngleDegrees(radiansToDegrees(r_rad))
   }
+}
+
+/**
+ * position 不一致を解消するために祖先パイプの length を調整する候補を返す。
+ * 各パイプの軸が diff 方向に整合し、かつ動く側の p2j チェーンが conflict ジョイントに
+ * 到達できる場合に LengthFix として列挙する。
+ */
+function computeLengthFixes(
+  error: InvalidConnection,
+  pipes: ErectorPipe[],
+  instances: { id: string; obj?: Object3D }[],
+  pipeJointRelationships: PipeJointRelationship[]
+): LengthFix[] {
+  if (error.position.diff <= 0.001) return []
+  const diff = error.position.expected.clone().sub(error.position.actual)
+  const diffNorm = diff.clone().normalize()
+  const fixes: LengthFix[] = []
+
+  for (const pipe of pipes) {
+    const pipeObj = instances.find(i => i.id === pipe.id)?.obj
+    if (!pipeObj) continue
+    const forward = new Vector3(0, 0, 1).applyQuaternion(pipeObj.quaternion)
+
+    if (Math.abs(forward.dot(diffNorm)) < 0.999) continue
+
+    // end が j2p → start 側が動く
+    const movingViaEnd = pipeJointRelationships.some(r =>
+      r.pipeId === pipe.id && r.connectionType === 'end' && r.relationshipType === 'j2p'
+    )
+
+    const startingJointId = movingViaEnd
+      ? pipe.connections.start?.jointId
+      : pipe.connections.end?.jointId
+    if (!startingJointId) continue
+
+    if (!isReachableDirected(startingJointId, error.jointId, pipes, pipeJointRelationships)) continue
+
+    // direct: startingJoint === error.jointId → actual 側を動かす（diff 方向に actual を引き寄せる）
+    // indirect: チェーン経由 → expected 側を動かす（actual に向けて expected を動かす = 逆符号）
+    // movingViaEnd のとき moving 方向が -forward なので符号がさらに反転する。
+    // 結果として (movingViaEnd XOR isIndirect) のとき符号が反転する。
+    const isIndirect = startingJointId !== error.jointId
+    const deltaLength = (movingViaEnd !== isIndirect) ? -forward.dot(diff) : forward.dot(diff)
+
+    const newLength = pipe.length + deltaLength
+    if (newLength < 0.1) continue
+
+    fixes.push({ pipeId: pipe.id, currentLength: pipe.length, newLength })
+  }
+  return fixes
 }
 
 export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
@@ -1195,10 +1309,11 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
         }
       })
 
-      // パイプ軸回転による position 修正候補と right 修正候補を計算する
+      // パイプ軸回転・length 変更による position 修正候補と right 修正候補を計算する
       errors.forEach(error => {
         error.rotationFixes = computeRotationFixes(error, this.pipes, this.instances)
         error.rightFix = computeRightFix(error, this.pipes, this.instances)
+        error.lengthFixes = computeLengthFixes(error, this.pipes, this.instances, this.pipeJointRelationships)
       })
 
       this.invalidConnections = errors
@@ -1271,6 +1386,9 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
     },
     resolveByRotationFix(connectionId: string, newRotation: number) {
       this.updateConnection(connectionId, { rotation: newRotation })
+    },
+    resolveByLengthFix(pipeId: string, newLength: number) {
+      this.updatePipe(pipeId, 'length', newLength)
     },
     removeJoint(jointId: string) {
       // 削除対象のジョイントを使用している全てのコネクションを収集して削除
