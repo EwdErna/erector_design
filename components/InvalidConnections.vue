@@ -54,6 +54,17 @@
             v-if="connection.conflictingSide === 'midway' && connection.conflictingConnectionId"
             @click="erector.resolveByUpdatePosition(connection.conflictingConnectionId!)"
           >相手の位置を更新</button>
+          <template v-if="connection.rotationFixes?.length">
+            <button
+              v-for="fix in connection.rotationFixes"
+              :key="fix.connectionId"
+              @click="erector.resolveByRotationFix(fix.connectionId, fix.newRotation)"
+            >{{ fix.pipeId }} [{{ fix.side }}] rotation: {{ fix.currentRotation }}° → {{ fix.newRotation }}°</button>
+          </template>
+          <button
+            v-if="connection.rightFix"
+            @click="erector.resolveByRotationFix(connection.rightFix!.connectionId, connection.rightFix!.newRotation)"
+          >right 修正: {{ connection.rightFix!.pipeId }} [{{ connection.rightFix!.side }}] rotation → {{ connection.rightFix!.newRotation }}°</button>
         </div>
       </div>
     </template>

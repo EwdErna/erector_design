@@ -3,7 +3,7 @@ import { Euler, Mesh, Quaternion, Vector3, MeshPhongMaterial, Object3D, Scene, B
 import { GLTFLoader } from 'three/examples/jsm/Addons.js'
 import type { ErectorJoint, ErectorJointHole, ErectorPipe, ErectorPipeConnection } from '~/types/erector_component'
 import { genPipe } from '~/utils/Erector/pipe'
-import { degreesToRadians, radiansToDegrees, roundAngleDegrees } from '~/utils/angleUtils'
+import { degreesToRadians, radiansToDegrees, roundAngleDegrees, normalizeAngle180 } from '~/utils/angleUtils'
 export type transform = { id: string, position: Vector3, rotation: Quaternion }
 import erectorComponentDefinition from '~/data/erector_component.json'
 export type PipeJointRelationship = {
@@ -12,6 +12,14 @@ export type PipeJointRelationship = {
   holeId: number
   connectionType: 'start' | 'end' | 'midway'
   relationshipType: 'j2p' | 'p2j' // j2p: joint determines pipe, p2j: pipe determines joint
+}
+
+type RotationFix = {
+  connectionId: string
+  pipeId: string
+  side: 'start' | 'end' | 'midway'
+  currentRotation: number
+  newRotation: number
 }
 
 type InvalidConnection = {
@@ -38,6 +46,8 @@ type InvalidConnection = {
   conflictType?: 'constraint'
   conflictingConnectionId?: string
   conflictingSide?: 'start' | 'end' | 'midway'
+  rotationFixes?: RotationFix[]
+  rightFix?: RotationFix
 }
 
 type RootMerge = {
@@ -73,6 +83,161 @@ function getAllConnectionsToJoint(pipes: ErectorPipe[], jointId: string): Connec
 
 function clampMidwayPosition(position: number, pipeLength: number): number {
   return Math.max(0, Math.min(pipeLength, position))
+}
+
+/**
+ * fromJointId から undirected BFS で targetJointId に到達できるか判定する。
+ * excludePipeId のパイプは通過しない（ループを断ち切り、逆戻りを防ぐ）。
+ */
+function isReachableExcludingPipe(
+  fromJointId: string,
+  targetJointId: string,
+  excludePipeId: string,
+  pipes: ErectorPipe[]
+): boolean {
+  if (fromJointId === targetJointId) return true
+  const visitedJoints = new Set<string>([fromJointId])
+  const visitedPipes = new Set<string>([excludePipeId])
+  const queue: string[] = [fromJointId]
+
+  while (queue.length > 0) {
+    const currentJointId = queue.shift()!
+    for (const pipe of pipes) {
+      if (visitedPipes.has(pipe.id)) continue
+      const touches =
+        pipe.connections.start?.jointId === currentJointId ||
+        pipe.connections.end?.jointId === currentJointId ||
+        pipe.connections.midway.some(c => c.jointId === currentJointId)
+      if (!touches) continue
+      visitedPipes.add(pipe.id)
+      const neighbors = [
+        pipe.connections.start?.jointId,
+        pipe.connections.end?.jointId,
+        ...pipe.connections.midway.map(c => c.jointId)
+      ].filter((id): id is string => !!id)
+      for (const jId of neighbors) {
+        if (jId === targetJointId) return true
+        if (!visitedJoints.has(jId)) {
+          visitedJoints.add(jId)
+          queue.push(jId)
+        }
+      }
+    }
+  }
+  return false
+}
+
+/**
+ * position 不一致を解消する rotation 変更候補を返す。
+ * 各パイプの軸を中心に actual を回転させると expected に一致するか判定し、
+ * 一致するパイプ軸上の接続を候補として列挙する。
+ */
+function computeRotationFixes(
+  error: InvalidConnection,
+  pipes: ErectorPipe[],
+  instances: { id: string; obj?: Object3D }[]
+): RotationFix[] {
+  if (error.position.diff <= 0.001) return []
+  const RADIUS_TOLERANCE = 0.005
+  const fixes: RotationFix[] = []
+  const actual = error.position.actual
+  const expected = error.position.expected
+
+  for (const pipe of pipes) {
+    const pipeObj = instances.find(i => i.id === pipe.id)?.obj
+    if (!pipeObj) continue
+    const axis = new Vector3(0, 0, 1).applyQuaternion(pipeObj.quaternion)
+
+    const toA = actual.clone().sub(pipeObj.position)
+    const toE = expected.clone().sub(pipeObj.position)
+    const aPerp = toA.clone().sub(axis.clone().multiplyScalar(toA.dot(axis)))
+    const ePerp = toE.clone().sub(axis.clone().multiplyScalar(toE.dot(axis)))
+
+    if (Math.abs(aPerp.length() - ePerp.length()) > RADIUS_TOLERANCE) continue
+    if (aPerp.length() < 0.001) continue // 軸上の縮退ケース
+
+    const cross = aPerp.clone().cross(ePerp)
+    const crossLen = cross.length()
+    const dot = aPerp.dot(ePerp)
+    let θDeg: number
+    if (crossLen < 1e-4 && dot < 0) {
+      θDeg = 180 // 180° 反転ケース
+    } else if (crossLen < 1e-4) {
+      continue // すでに一致、またはゼロベクトル
+    } else {
+      θDeg = Math.sign(cross.dot(axis)) * radiansToDegrees(aPerp.angleTo(ePerp))
+    }
+
+    const allConns: Array<{ conn: ErectorPipeConnection; side: 'start' | 'end' | 'midway' }> = []
+    if (pipe.connections.start) allConns.push({ conn: pipe.connections.start, side: 'start' })
+    if (pipe.connections.end) allConns.push({ conn: pipe.connections.end, side: 'end' })
+    pipe.connections.midway.forEach(c => allConns.push({ conn: c, side: 'midway' }))
+
+    for (const { conn, side } of allConns) {
+      if (conn.jointId === error.jointId) continue
+      if (!isReachableExcludingPipe(conn.jointId, error.jointId, pipe.id, pipes)) continue
+      fixes.push({
+        connectionId: conn.id,
+        pipeId: pipe.id,
+        side,
+        currentRotation: conn.rotation,
+        newRotation: normalizeAngle180(roundAngleDegrees(conn.rotation + θDeg))
+      })
+    }
+  }
+  return fixes
+}
+
+/**
+ * right 不一致を解消するために conflicting connection の rotation を変更する候補を返す。
+ * 適用対象は conflicting connection 自身（自由度は恣意的に選択）。
+ */
+function computeRightFix(
+  error: InvalidConnection,
+  pipes: ErectorPipe[],
+  instances: { id: string; obj?: Object3D }[]
+): RotationFix | undefined {
+  if (error.right.diff <= 0.001) return undefined
+  const pipe = pipes.find(p =>
+    p.connections.start?.id === error.id ||
+    p.connections.end?.id === error.id ||
+    p.connections.midway.some(c => c.id === error.id)
+  )
+  if (!pipe) return undefined
+  const pipeObj = instances.find(i => i.id === pipe.id)?.obj
+  if (!pipeObj) return undefined
+
+  const actual = error.right.actual
+  const pipeQuat = pipeObj.quaternion
+  const pipeForward = new Vector3(0, 0, 1).applyQuaternion(pipeQuat)
+
+  // r_rad: actual を r_rad だけ pipeForward 周りに回転させると base になる角度
+  // → conn.rotation = r_deg とすれば expectedHoleRight が actual に一致する
+  let r_rad: number
+  let conn: ErectorPipeConnection | undefined
+
+  if (error.side === 'end') {
+    conn = pipe.connections.end
+    const baseEnd = new Vector3(-1, 0, 0).applyQuaternion(pipeQuat)
+    // end: rotate(baseEnd, r_rad, pipeForward) = actual
+    r_rad = Math.atan2(baseEnd.clone().cross(actual).dot(pipeForward), baseEnd.dot(actual))
+  } else {
+    conn = error.side === 'start'
+      ? pipe.connections.start
+      : pipe.connections.midway.find(c => c.id === error.id)
+    const base = new Vector3(1, 0, 0).applyQuaternion(pipeQuat)
+    // start/midway: rotate(actual, r_rad, pipeForward) = base
+    r_rad = Math.atan2(actual.clone().cross(base).dot(pipeForward), actual.dot(base))
+  }
+  if (!conn) return undefined
+
+  return {
+    connectionId: error.id,
+    pipeId: pipe.id,
+    side: error.side,
+    currentRotation: conn.rotation,
+    newRotation: roundAngleDegrees(radiansToDegrees(r_rad))
+  }
 }
 
 export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
@@ -1030,6 +1195,12 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
         }
       })
 
+      // パイプ軸回転による position 修正候補と right 修正候補を計算する
+      errors.forEach(error => {
+        error.rotationFixes = computeRotationFixes(error, this.pipes, this.instances)
+        error.rightFix = computeRightFix(error, this.pipes, this.instances)
+      })
+
       this.invalidConnections = errors
 
       // 自動解決モードが有効な場合、constraint競合を自動解決する
@@ -1097,6 +1268,9 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       const newPosition = clampMidwayPosition(dist, pipe.length)
 
       this.updateConnection(connectionId, { position: newPosition })
+    },
+    resolveByRotationFix(connectionId: string, newRotation: number) {
+      this.updateConnection(connectionId, { rotation: newRotation })
     },
     removeJoint(jointId: string) {
       // 削除対象のジョイントを使用している全てのコネクションを収集して削除
