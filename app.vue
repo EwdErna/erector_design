@@ -24,45 +24,47 @@
 </template>
 
 <style scoped>
-.app-container {
-  height: calc(100vh - 16px);
+@media (min-width: 769px), (pointer: fine) {
+  .app-container {
+    height: calc(100vh - 16px);
 
-  nav {
-    height: 64px;
-  }
-
-  footer {
-    height: 20px;
-  }
-
-  main {
-    width: 100%;
-    height: calc(100% - 84px);
-    display: flex;
-
-    .left {
-      width: 25%;
-      background-color: #f0f0f0;
+    nav {
+      height: 64px;
     }
 
-    .right {
-      width: 25%;
-      background-color: #f0f0f0;
+    footer {
+      height: 20px;
     }
 
-    .center {
-      width: 50%;
+    main {
+      width: 100%;
+      height: calc(100% - 84px);
       display: flex;
-      flex-direction: column;
 
-      .scene-area {
-        flex: 0 0 80%;
-        overflow: hidden;
+      .left {
+        width: 25%;
+        background-color: #f0f0f0;
       }
 
-      .error-area {
-        flex: 0 0 20%;
-        overflow: hidden;
+      .right {
+        width: 25%;
+        background-color: #f0f0f0;
+      }
+
+      .center {
+        width: 50%;
+        display: flex;
+        flex-direction: column;
+
+        .scene-area {
+          flex: 0 0 80%;
+          overflow: hidden;
+        }
+
+        .error-area {
+          flex: 0 0 20%;
+          overflow: hidden;
+        }
       }
     }
   }

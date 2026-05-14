@@ -186,41 +186,43 @@ function handleFileUpload(event: Event) {
 </script>
 
 <style scoped>
-.container {
-  display: flex;
-  justify-content: space-between;
-
-  .header {
+@media (min-width: 769px), (pointer: fine) {
+  .container {
     display: flex;
-    align-items: baseline;
+    justify-content: space-between;
 
-    .title {
-      color: transparent;
-      background: linear-gradient(72deg, #4facfe, #00f2fe);
-      background-clip: text;
-      margin-right: 20px;
-    }
-  }
+    .header {
+      display: flex;
+      align-items: baseline;
 
-  .buttons {
-    display: flex;
-    align-items: center;
-
-    .button {
-      padding: 10px 20px;
-      background-color: #007bff;
-      color: white;
-      border-radius: 5px;
-      cursor: pointer;
-      margin-left: 10px;
-
-      &:hover {
-        background-color: #0056b3;
+      .title {
+        color: transparent;
+        background: linear-gradient(72deg, #4facfe, #00f2fe);
+        background-clip: text;
+        margin-right: 20px;
       }
+    }
 
-      &.disabled {
-        background-color: #757575;
-        pointer-events: none;
+    .buttons {
+      display: flex;
+      align-items: center;
+
+      .button {
+        padding: 10px 20px;
+        background-color: #007bff;
+        color: white;
+        border-radius: 5px;
+        cursor: pointer;
+        margin-left: 10px;
+
+        &:hover {
+          background-color: #0056b3;
+        }
+
+        &.disabled {
+          background-color: #757575;
+          pointer-events: none;
+        }
       }
     }
   }
