@@ -20,11 +20,16 @@
       </section>
     </main>
     <footer></footer>
+    <div class="mobile-only">
+      <FloatingFileButtons />
+      <BottomSheet />
+    </div>
   </div>
 </template>
 
 <style scoped>
-@media (min-width: 769px), (pointer: fine) {
+@media (min-width: 769px),
+(pointer: fine) {
   .app-container {
     height: calc(100vh - 16px);
 
@@ -64,6 +69,50 @@
         .error-area {
           flex: 0 0 20%;
           overflow: hidden;
+        }
+      }
+    }
+  }
+
+  .mobile-only {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) and (pointer: coarse) {
+  .app-container {
+    height: 100vh;
+
+    nav {
+      display: none;
+    }
+
+    footer {
+      display: none;
+    }
+
+    main {
+      position: fixed;
+      inset: 0;
+
+      .left,
+      .right {
+        display: none;
+      }
+
+      .center {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+
+        .scene-area {
+          flex: 1;
+          overflow: hidden;
+        }
+
+        .error-area {
+          display: none;
         }
       }
     }
