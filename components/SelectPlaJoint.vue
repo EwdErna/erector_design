@@ -46,7 +46,7 @@ const selected = useState<{
   type: string,
   color: string
 }>("selectedJoint", () => ({
-  category: "",
+  category: components.pla_joints.categories[0]?.name ?? "",
   type: "",
   color: ""
 }))
