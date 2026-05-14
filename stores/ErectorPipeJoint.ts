@@ -470,6 +470,8 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
       const pipeMesh = new Mesh(pipeModel, new MeshPhongMaterial())
       pipeObject.name = id
       pipeObject.add(pipeMesh)
+      const { x, y, z } = useThree().orbitTarget
+      pipeObject.position.set(x, y, z)
       this.instances.push({ id, obj: pipeObject })
       console.log(pipeObject)
       // TODO: get scene and add pipeObject to it
@@ -509,6 +511,8 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
         holes
       })
       if (!this.instances.some(i => i.id === id)) {
+        const { x, y, z } = useThree().orbitTarget
+        const spawnPos = new Vector3(x, y, z)
         loader.load(`/models/${category}/erector_component-${name}.gltf`, (gltf) => {
           const model = gltf.scene
           model.traverse((child) => {
@@ -517,6 +521,7 @@ export const useErectorPipeJoint = defineStore('erectorPipeJoint', {
             }
           })
           model.name = id
+          model.position.copy(spawnPos)
           this.instances.push({ id, obj: model })
           // TODO: get scene and add model to it
           scene.add(model)
