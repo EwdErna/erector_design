@@ -147,8 +147,8 @@ const setupScene = () => {
   controls.minDistance = 0.1
   controls.maxDistance = 100
   controls.maxPolarAngle = Math.PI
-  // 3Dシーンのドラッグ開始でボトムシートを閉じる
   controls.addEventListener('start', () => bottomSheet.onSceneDragStart())
+  controls.addEventListener('change', () => three.updateOrbitTarget(controls.target))
 
   jointControls = new JointControls(camera, renderer.domElement)
   jointControls.addEventListener('dragging-changed', e => {
