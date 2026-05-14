@@ -1,15 +1,14 @@
 <template>
-  <div class="container">
+  <div class="container" :class="{ 'has-errors': hasErrors }">
     <div class="header">
-      <div class="toggle">
-        <Icon :name="`mdi-chevron-${open ? 'right' : 'left'}`" @click="open = !open" />
-      </div>
-      <label v-if="open" class="auto-resolve-label">
+      <span class="header-title">接続エラー</span>
+      <label v-if="hasErrors" class="auto-resolve-label">
         <input type="checkbox" v-model="erector.autoResolveConflicts" />
         自動解決
       </label>
     </div>
-    <div v-if="open" class="content">
+    <div class="content">
+      <div v-if="!hasErrors" class="no-errors">エラーなし</div>
       <div
         v-for="merge in erector.rootMerges"
         :key="merge.mergedRoots.join('-')"
@@ -80,23 +79,40 @@
 
 <script lang="ts" setup>
 const erector = useErectorPipeJoint()
-const open = ref(true)
+const hasErrors = computed(() => erector.rootMerges.length > 0 || erector.invalidConnections.length > 0)
 </script>
 
 <style scoped>
 .container {
-  background-color: #ff4444cc;
+  background-color: #33333388;
   padding: 10px;
-  max-width: 50vw;
-  max-height: 50vh;
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  box-sizing: border-box;
+
+  &.has-errors {
+    background-color: #ff4444cc;
+  }
 
   .header {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .header-title {
+    font-size: 0.85em;
+    flex: 1;
+  }
+
+  .no-errors {
+    color: #aaa;
+    font-size: 0.85em;
+    padding: 4px;
   }
 
   .auto-resolve-label {

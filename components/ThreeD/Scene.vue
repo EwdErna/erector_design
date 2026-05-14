@@ -1,7 +1,10 @@
 <template>
-  <div class="scene-container" ref="container" @click="selectObject">
-
-  </div>
+  <div
+    class="scene-container"
+    ref="container"
+    @click="selectObject"
+    @touchstart.passive="onTouchStart"
+  ></div>
 </template>
 
 <script lang="ts" setup>
@@ -16,6 +19,7 @@ import { degreesToRadians } from '~/utils/angleUtils';
 const container = useTemplateRef("container")
 const objectSelection = useObjectSelection()
 const three = useThree()
+const bottomSheet = useBottomSheet()
 let renderer: WebGLRenderer
 let camera: PerspectiveCamera
 let controls: OrbitControls
@@ -23,10 +27,27 @@ let jointControls: JointControls
 let unifiedPipeControls: PipeControls
 const erector = useErectorPipeJoint()
 
+// タッチ開始座標を記録してドラッグとタップを区別する
+let touchStartX = 0
+let touchStartY = 0
+const TOUCH_MOVE_THRESHOLD = 10 // px
+
+function onTouchStart(event: TouchEvent) {
+  const t = event.touches[0]
+  if (!t) return
+  touchStartX = t.clientX
+  touchStartY = t.clientY
+}
+
+// @click はタッチタップでも発火する（ブラウザが合成するMouseEvent）。
+// タッチドラッグ後はブラウザが click を抑制するため、追加のガードは不要。
 function selectObject(event: MouseEvent) {
   const rect = container.value?.getBoundingClientRect()
   if (!rect) return
-  const mouse = new Vector2((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1)
+  const mouse = new Vector2(
+    (event.clientX - rect.left) / rect.width * 2 - 1,
+    -(event.clientY - rect.top) / rect.height * 2 + 1
+  )
   const raycaster = new Raycaster()
   raycaster.setFromCamera(mouse, camera)
   const searchObjects = erector.instances.map(v => v.obj).filter(v => v !== undefined)
@@ -48,7 +69,6 @@ function selectObject(event: MouseEvent) {
       unifiedPipeControls.setTarget(pipeObject, rootObject as Mesh)
       jointControls.clear()
     } else {
-      // Clear all controls if not selecting a joint or pipe
       jointControls.clear()
       unifiedPipeControls.clear()
     }
@@ -119,7 +139,7 @@ const setupScene = () => {
   camera.translateY(.5)
   camera.translateZ(.5)
   camera.lookAt(0, 0, 0)
-  // OrbitControlsの初期化
+
   controls = new OrbitControls(camera, renderer.domElement)
   controls.enableDamping = true
   controls.dampingFactor = 0.05
@@ -127,6 +147,8 @@ const setupScene = () => {
   controls.minDistance = 0.1
   controls.maxDistance = 100
   controls.maxPolarAngle = Math.PI
+  // 3Dシーンのドラッグ開始でボトムシートを閉じる
+  controls.addEventListener('start', () => bottomSheet.onSceneDragStart())
 
   jointControls = new JointControls(camera, renderer.domElement)
   jointControls.addEventListener('dragging-changed', e => {
@@ -149,7 +171,6 @@ const setupScene = () => {
   scene.add(axesHelper)
 
   erector.loadFromStructure(erector_structure)
-  // Apply initial rotation to root pipe objects
   erector.rootPipeObjects.forEach(rootPipeObject => {
     rootPipeObject.rotation.set(0, degreesToRadians(40), 0)
   })
@@ -161,6 +182,7 @@ const setupScene = () => {
   const gltfLoader = new GLTFLoader()
   animate(scene)
 }
+
 const animate = (scene: Scene) => {
   if (!scene) return;
   erector.syncRootPipeIds()
@@ -176,14 +198,11 @@ const animate = (scene: Scene) => {
     }))
   }
 
-  // OrbitControlsの更新
   controls.update()
-
   requestAnimationFrame(() => animate(scene))
   renderer.render(scene, camera)
 }
 
-// Watch for object selection changes to clear gizmo when selection is cleared
 watch(() => objectSelection.object, (newSelection) => {
   if (!newSelection || newSelection === '') {
     jointControls?.clear()
@@ -200,10 +219,12 @@ const handleResize = () => {
   renderer.setSize(w, h)
   controls.update()
 }
+
 onMounted(() => {
   setupScene()
   window.addEventListener('resize', handleResize)
 })
+
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
   if (jointControls) jointControls.dispose()

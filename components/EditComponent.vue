@@ -346,6 +346,8 @@ function removeConnectionById(id: string) {
 }
 
 function removeObject(obj: ErectorPipe | ErectorJoint) {
+  const label = isErectorPipe(obj) ? 'パイプ' : 'ジョイント'
+  if (!window.confirm(`${obj.id}（${label}）を削除しますか？`)) return
 
   if (isErectorPipe(obj)) {
     // パイプの削除（関連するコネクションも含めて適切に削除）
