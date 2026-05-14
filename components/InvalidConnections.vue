@@ -9,7 +9,7 @@
         自動解決
       </label>
     </div>
-    <template v-if="open">
+    <div v-if="open" class="content">
       <div
         v-for="merge in erector.rootMerges"
         :key="merge.mergedRoots.join('-')"
@@ -74,7 +74,7 @@
           </template>
         </div>
       </div>
-    </template>
+    </div>
   </div>
 </template>
 
@@ -87,6 +87,11 @@ const open = ref(true)
 .container {
   background-color: #ff4444cc;
   padding: 10px;
+  max-width: 50vw;
+  max-height: 50vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 
   .header {
     display: flex;
@@ -100,6 +105,12 @@ const open = ref(true)
     gap: 4px;
     font-size: 0.85em;
     cursor: pointer;
+  }
+
+  .content {
+    overflow-y: auto;
+    flex: 1 1 auto;
+    min-height: 0;
   }
 
   .root-merge {
@@ -167,6 +178,7 @@ const open = ref(true)
     .position,
     .rotation {
       margin-left: 5px;
+      word-break: break-all;
     }
 
     .conflict-actions {
