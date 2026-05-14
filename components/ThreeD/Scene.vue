@@ -220,13 +220,19 @@ const handleResize = () => {
   controls.update()
 }
 
+let resizeObserver: ResizeObserver | null = null
+
 onMounted(() => {
   setupScene()
-  window.addEventListener('resize', handleResize)
+  // ResizeObserver fires after layout is complete, so dimensions are accurate even on
+  // mobile orientation changes (window.resize can fire before layout updates finish).
+  resizeObserver = new ResizeObserver(handleResize)
+  if (container.value) resizeObserver.observe(container.value)
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('resize', handleResize)
+  resizeObserver?.disconnect()
+  resizeObserver = null
   if (jointControls) jointControls.dispose()
   if (unifiedPipeControls) unifiedPipeControls.dispose()
   if (controls) controls.dispose()
