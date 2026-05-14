@@ -7,17 +7,19 @@
       <section class="left">
         <SelectComponents></SelectComponents>
       </section>
-      <section class="main">
-        <ThreeDScene></ThreeDScene>
+      <section class="center">
+        <div class="scene-area">
+          <ThreeDScene></ThreeDScene>
+        </div>
+        <div class="error-area">
+          <InvalidConnections></InvalidConnections>
+        </div>
       </section>
       <section class="right">
         <EditComponent></EditComponent>
       </section>
     </main>
     <footer></footer>
-    <div class="overlay">
-      <InvalidConnections></InvalidConnections>
-    </div>
   </div>
 </template>
 
@@ -48,15 +50,21 @@
       background-color: #f0f0f0;
     }
 
-    .main {
+    .center {
       width: 50%;
-    }
-  }
+      display: flex;
+      flex-direction: column;
 
-  .overlay {
-    position: absolute;
-    bottom: 5px;
-    right: 5px;
+      .scene-area {
+        flex: 0 0 80%;
+        overflow: hidden;
+      }
+
+      .error-area {
+        flex: 0 0 20%;
+        overflow: hidden;
+      }
+    }
   }
 }
 </style>
