@@ -359,7 +359,23 @@
                   0
                 ]
               }
-            ]
+            ],
+            "movable": {
+              "type": "pivot",
+              "pivotCenter": [
+                0.027,
+                0,
+                0
+              ],
+              "pivotAxis": [
+                0,
+                0,
+                1
+              ],
+              "rotatingHoles": [
+                1
+              ]
+            }
           }
         ]
       },
@@ -1445,7 +1461,10 @@
                 ],
                 "through": true
               }
-            ]
+            ],
+            "movable": {
+              "type": "free_rotation"
+            }
           },
           {
             "name": "J-166"
@@ -1485,7 +1504,11 @@
                 ],
                 "through": true
               }
-            ]
+            ],
+            "movable": {
+              "type": "detachable",
+              "detachableHoleIndex": 1
+            }
           },
           {
             "name": "J-23C",
@@ -2584,7 +2607,10 @@
                 ],
                 "through": true
               }
-            ]
+            ],
+            "movable": {
+              "type": "free_rotation"
+            }
           }
         ]
       },

@@ -10,9 +10,21 @@ export type ErectorPipeComponent = {
   diameters: number[],
   lengths: number[],
 }
+
+export type JointMovableDefinition =
+  | {
+      type: "pivot",
+      pivotCenter: [number, number, number],
+      pivotAxis: [number, number, number],
+      rotatingHoles: number[],
+    }
+  | { type: "free_rotation" }
+  | { type: "detachable", detachableHoleIndex: number }
+
 export type ErectorJointComponent = {
   name: string,
-  joints?: ErectorJointType[]
+  joints?: ErectorJointType[],
+  movable?: JointMovableDefinition,
 }
 export type ErectorJointType = {
   through?: boolean,
@@ -30,6 +42,7 @@ export type ErectorJoint = {
   id: string,
   name: string,
   holes: ErectorJointHole[],
+  clampedHoleIndex?: number,  // free_rotation型のみ。設計者がUI設定。デフォルト0
 }
 export type ErectorPipeConnection = {
   id: string,
