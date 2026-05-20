@@ -51,10 +51,9 @@ const selectColor = (color: string) => {
   selected.value.color = color
 }
 const addPipeToScene = () => {
-  const scene = useThree().scene
-  if (!scene) { return }
-  const erector = useErectorPipeJoint()
-  const added_id = erector.addPipe(scene, selected.value.diameter / 1000, selected.value.length / 1000)
+  if (!useThree().scene) { return }
+  const erector = useErector()
+  const added_id = erector.addPipe(selected.value.diameter / 1000, selected.value.length / 1000)
   erector.validateConnections()
 }
 
