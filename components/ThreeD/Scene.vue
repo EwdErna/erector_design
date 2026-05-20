@@ -25,7 +25,7 @@ let camera: PerspectiveCamera
 let controls: OrbitControls
 let jointControls: JointControls
 let unifiedPipeControls: PipeControls
-const erector = useErectorPipeJoint()
+const erector = useErector()
 
 // タッチ開始座標を記録してドラッグとタップを区別する
 let touchStartX = 0

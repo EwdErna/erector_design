@@ -31,7 +31,7 @@
 </template>
 
 <script lang="ts" setup>
-import { Quaternion, Scene, Vector3 } from 'three';
+import { Quaternion, Vector3 } from 'three';
 import type { PropType } from 'vue';
 import type { ErectorJointComponent } from '~/types/erector_component';
 
@@ -54,15 +54,11 @@ const selectedTypes = computed(() => {
   return components.pla_joints.categories.find(category => category.name === selected.value.category)?.types || []
 })
 function addJointToScene(name: string, category: string) {
-  const scene: Scene | undefined = useThree().scene
-  if (!scene) { return }
+  if (!useThree().scene) { return }
   const joint = components.pla_joints.categories.find(c => c.name === category)?.types.find(t => t.name === name)
   if (!joint?.joints) { return }
-  // Add the joint to the scene
-  // This is a placeholder for the actual implementation
-  console.log(`Adding joint ${name} of category ${category} to the scene`)
-  const erector = useErectorPipeJoint()
-  const added_id = erector.addJoint(scene, name, category, joint.joints.map(j => {
+  const erector = useErector()
+  const added_id = erector.addJoint(name, category, joint.joints.map(j => {
     return {
       type: j.through !== true ? 'FIX' as const : "THROUGH" as const,
       dir: new Quaternion().setFromUnitVectors(new Vector3(0, 0, 1), new Vector3().fromArray(j.to)),
@@ -70,7 +66,6 @@ function addJointToScene(name: string, category: string) {
     }
   }))
   erector.validateConnections()
-  console.log(`added ${added_id}`)
 }
 </script>
 
