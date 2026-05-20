@@ -47,7 +47,7 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
   }
   createGizmo() {
     if (!this.target) return;
-    const connections = useErectorPipeJoint()
+    const connections = useErector()
     const joint = this.target.joint
 
 
@@ -326,7 +326,7 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
     if (!pipeObject) {
       // Fallback: try to find pipe object by ID
       const pipeId = this.dragging.userData.pipeId;
-      const connections = useErectorPipeJoint();
+      const connections = useErector();
       const fallbackPipeObject = connections.instances.find(i => i.id === pipeId)?.obj;
       if (!fallbackPipeObject) return 0;
       this.dragging.userData.pipeObject = fallbackPipeObject; // Cache for future use
@@ -386,7 +386,7 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
   private applyPositionToMidwayConnection(newPosition: number) {
     if (!this.dragging) return;
 
-    const connections = useErectorPipeJoint();
+    const connections = useErector();
     const connectionId = this.dragging.userData.connectionId;
 
     // Update the connection position
@@ -580,7 +580,7 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
 
     const connection = this.findTargetConnection();
     if (connection.targetConnection) {
-      const connections = useErectorPipeJoint();
+      const connections = useErector();
       connections.updateConnection(connection.targetConnection.id, { rotation: normalizeAngle180(rotationAngle) });
     }
 
@@ -596,7 +596,7 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
     const connection = this.findTargetConnection();
     if (!connection.targetPipe || !connection.targetConnection) return null;
 
-    const connections = useErectorPipeJoint();
+    const connections = useErector();
     return connections.getPipeJointRelationship(
       connection.targetPipe.id,
       this.target.joint.id,
@@ -618,7 +618,7 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
       return { connectionType: 'start' };
     }
 
-    const connections = useErectorPipeJoint();
+    const connections = useErector();
     const dragging = this.dragging;
 
     // Find the pipe connected to this gizmo
@@ -748,7 +748,7 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
     };
 
     // Find and store reference to the pipe object for direct coordinate conversion
-    const connections = useErectorPipeJoint();
+    const connections = useErector();
     const pipeObject = connections.instances.find(i => i.id === pipe.id)?.obj;
     if (pipeObject) {
       sliderMesh.userData.pipeObject = pipeObject;

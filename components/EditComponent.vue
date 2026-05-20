@@ -151,7 +151,7 @@ import { isErectorPipe, type ErectorJoint, type ErectorPipe, type ErectorPipeCon
 import { radiansToDegrees, degreesToRadians } from '~/utils/angleUtils';
 
 const objectSelection = useObjectSelection()
-const erector = useErectorPipeJoint()
+const erector = useErector()
 const selectedPipe = computed(() => erector.pipes.find(p => p.id === objectSelection.object))
 const selectedJoint = computed(() => erector.joints.find(j => j.id === objectSelection.object))
 const selectedObject = computed(() => erector.instances.find(i => i.id === objectSelection.object))

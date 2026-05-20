@@ -41,7 +41,7 @@
 
 <script lang="ts" setup>
 const { isOpen, activeTab, open, close, switchTab } = useBottomSheet()
-const erector = useErectorPipeJoint()
+const erector = useErector()
 const objectSelection = useObjectSelection()
 
 const errorCount = computed(() => erector.invalidConnections.length + erector.rootMerges.length)
