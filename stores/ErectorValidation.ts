@@ -469,7 +469,28 @@ export const useErectorValidation = defineStore('erectorValidation', {
     },
 
     resolveByDisconnect(connectionId: string) {
-      useErector().removeConnection(connectionId)
+      const graph = useErectorGraph()
+      const scene = useErectorScene()
+
+      // Clean up scene relationships before removing from graph
+      for (const pipe of graph.pipes) {
+        if (pipe.connections.start?.id === connectionId) {
+          scene.removeConnectionRelationship(pipe.id, pipe.connections.start.jointId, pipe.connections.start.holeId, 'start')
+          break
+        }
+        if (pipe.connections.end?.id === connectionId) {
+          scene.removeConnectionRelationship(pipe.id, pipe.connections.end.jointId, pipe.connections.end.holeId, 'end')
+          break
+        }
+        const midwayIdx = pipe.connections.midway.findIndex(c => c.id === connectionId)
+        if (midwayIdx !== -1) {
+          const conn = pipe.connections.midway[midwayIdx]
+          scene.removeConnectionRelationship(pipe.id, conn.jointId, conn.holeId, 'midway')
+          break
+        }
+      }
+
+      graph.removeConnection(connectionId)
       this.validateConnections()
     },
 
