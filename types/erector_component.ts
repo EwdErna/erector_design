@@ -38,6 +38,11 @@ export type ErectorJointHole = {
   offset: Vector3 // jointの中心からのオフセット
 }
 
+export type JointSimulationState =
+  | { type: "pivot"; angle: number }
+  | { type: "free_rotation"; spinAngle: number }
+  | { type: "detachable"; attached: boolean }
+
 export type ErectorJoint = {
   id: string,
   name: string,

@@ -159,8 +159,8 @@
                 type="radio"
                 :name="`clampedHole-${selectedJoint.id}`"
                 :value="i"
-                :checked="clampedHoleModel === i"
-                @change="clampedHoleModel = i"
+                v-model="inputClampedHoleIndex"
+                @change="erector.updateClampedHoleIndex(selectedJoint.id, i)"
               />穴{{ i }}
             </label>
           </div>
@@ -191,14 +191,10 @@ const selectedJointMovable = computed(() => {
   return allJointTypes.find(t => t.name === selectedJoint.value!.name)?.movable
 })
 
-const clampedHoleModel = computed({
-  get: () => selectedJoint.value?.clampedHoleIndex ?? 0,
-  set: (value: number) => {
-    if (selectedJoint.value) {
-      erector.updateClampedHoleIndex(selectedJoint.value.id, value)
-    }
-  }
-})
+const inputClampedHoleIndex = ref(0)
+watch(selectedJoint, (joint) => {
+  inputClampedHoleIndex.value = joint?.clampedHoleIndex ?? 0
+}, { immediate: true })
 
 // 入力用の一時的な値を管理するref
 const inputPosition = ref([0, 0, 0])

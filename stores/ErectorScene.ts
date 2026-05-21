@@ -1,10 +1,34 @@
 import { defineStore } from 'pinia'
 import { Euler, Mesh, Quaternion, Vector3, MeshPhongMaterial, Object3D, BufferGeometry, ArrowHelper } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/Addons.js'
-import type { ErectorJointHole } from '~/types/erector_component'
+import type { ErectorComponent, ErectorJoint, ErectorJointHole, JointMovableDefinition } from '~/types/erector_component'
 import { genPipe } from '~/utils/Erector/pipe'
 import { degreesToRadians, radiansToDegrees, roundAngleDegrees } from '~/utils/angleUtils'
 import { useErectorGraph, clampMidwayPosition, type PipeJointRelationship } from '~/stores/ErectorGraph'
+import { useErectorSimulation } from '~/stores/ErectorSimulation'
+import erectorComponentDefinitionRaw from '~/data/erector_component.json'
+
+const erectorComponentDef = erectorComponentDefinitionRaw as unknown as ErectorComponent
+
+function getMovableDefForJoint(name: string): JointMovableDefinition | undefined {
+  const allTypes = [
+    ...erectorComponentDef.pla_joints.categories.flatMap(c => c.types),
+    ...erectorComponentDef.metal_joints,
+  ]
+  return (allTypes.find(t => t.name === name) as any)?.movable
+}
+
+function computePivotHoles(joint: ErectorJoint, pivotCenter: [number, number, number], pivotAxis: [number, number, number], rotatingHoles: number[], angle: number): ErectorJointHole[] {
+  const center = new Vector3(...pivotCenter)
+  const axis = new Vector3(...pivotAxis).normalize()
+  const q = new Quaternion().setFromAxisAngle(axis, angle)
+  return joint.holes.map((hole, i) => {
+    if (!rotatingHoles.includes(i)) return hole
+    const newOffset = center.clone().add(hole.offset.clone().sub(center).applyQuaternion(q))
+    const newDir = q.clone().multiply(hole.dir)
+    return { ...hole, offset: newOffset, dir: newDir }
+  })
+}
 
 export type transform = { id: string, position: Vector3, rotation: Quaternion }
 
@@ -151,12 +175,58 @@ export const useErectorScene = defineStore('erectorScene', {
 
     calculateWorldPosition() {
       const graph = useErectorGraph()
+      const simulation = useErectorSimulation()
       const updated: string[] = []
       const nextUpdate: string[] = []
       const pipes = graph.pipes
       const joints = graph.joints
       const instances = this.instances
-      const renderCount = this.renderCount++
+      this.renderCount++
+      const isSimMode = simulation.isSimulationMode
+
+      // Precompute simulation-modified holes for pivot joints
+      const simulatedHoles = new Map<string, ErectorJointHole[]>()
+      if (isSimMode) {
+        for (const joint of joints) {
+          const simState = simulation.simulationStates[joint.id]
+          if (!simState || simState.type !== 'pivot') continue
+          const movableDef = getMovableDefForJoint(joint.name)
+          if (movableDef?.type === 'pivot') {
+            simulatedHoles.set(joint.id, computePivotHoles(joint, movableDef.pivotCenter, movableDef.pivotAxis, movableDef.rotatingHoles, simState.angle))
+          }
+        }
+      }
+
+      function getEffectiveHoles(joint: ErectorJoint): ErectorJointHole[] {
+        return simulatedHoles.get(joint.id) ?? joint.holes
+      }
+
+      function getEffectiveConnRotation(connRotation: number, holeId: number, jointId: string): number {
+        if (!isSimMode) return connRotation
+        const simState = simulation.simulationStates[jointId]
+        if (simState?.type !== 'free_rotation') return connRotation
+        const joint = joints.find(j => j.id === jointId)
+        if (!joint) return connRotation
+        const movableDef = getMovableDefForJoint(joint.name)
+        if (movableDef?.type !== 'free_rotation') return connRotation
+        const clampedIdx = joint.clampedHoleIndex ?? 0
+        const nonClampedIdx = 1 - clampedIdx
+        if (holeId === nonClampedIdx) {
+          return connRotation + radiansToDegrees(simState.spinAngle)
+        }
+        return connRotation
+      }
+
+      function isConnectionDetached(jointId: string, holeId: number): boolean {
+        if (!isSimMode) return false
+        const simState = simulation.simulationStates[jointId]
+        if (simState?.type !== 'detachable' || simState.attached !== false) return false
+        const joint = joints.find(j => j.id === jointId)
+        if (!joint) return false
+        const movableDef = getMovableDefForJoint(joint.name)
+        if (movableDef?.type !== 'detachable') return false
+        return holeId === movableDef.detachableHoleIndex
+      }
 
       const updatePipeJointRelationshipMethod = this.updatePipeJointRelationship
 
@@ -164,54 +234,59 @@ export const useErectorScene = defineStore('erectorScene', {
         if (!updated.includes(pipe.id)) {
           const start = pipe.connections.start
           const end = pipe.connections.end
-          if (start && updated.includes(start.jointId)) {
+          if (start && updated.includes(start.jointId) && !isConnectionDetached(start.jointId, start.holeId)) {
             const joint = joints.find(joint => joint.id === start.jointId)
             const jointInstance = instances.find(i => i.id === start.jointId)?.obj
             if (joint && jointInstance) {
-              const hole = joint.holes[start.holeId]
+              const hole = getEffectiveHoles(joint)[start.holeId]
               if (hole) {
                 updated.push(pipe.id)
                 updatePipeJointRelationship(pipe.id, start.jointId, start.holeId, 'start', 'j2p')
+                const effectiveRotation = getEffectiveConnRotation(start.rotation, start.holeId, start.jointId)
                 const position = jointInstance.position.clone().add(hole.offset.clone().applyQuaternion(jointInstance.quaternion))
                 const rotation = jointInstance.quaternion.clone().multiply(hole.dir.clone()
-                  .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), degreesToRadians(start.rotation))))
+                  .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), degreesToRadians(effectiveRotation))))
                 pipeTransform.position.set(...position.toArray())
                 pipeTransform.rotation.set(...rotation.toArray())
               }
             }
           }
-          else if (end && updated.includes(end.jointId)) {
+          else if (end && updated.includes(end.jointId) && !isConnectionDetached(end.jointId, end.holeId)) {
             const joint = joints.find(joint => joint.id === end.jointId)
             const jointInstance = instances.find(i => i.id === end.jointId)?.obj
             if (joint && jointInstance) {
-              const hole = joint.holes[end.holeId]
+              const hole = getEffectiveHoles(joint)[end.holeId]
               if (hole) {
                 updated.push(pipe.id)
                 updatePipeJointRelationship(pipe.id, end.jointId, end.holeId, 'end', 'j2p')
+                const effectiveRotation = getEffectiveConnRotation(end.rotation, end.holeId, end.jointId)
                 const position = jointInstance.position.clone().add(hole.offset.clone().applyQuaternion(jointInstance.quaternion))
                 const rotation = jointInstance.quaternion.clone().multiply(hole.dir.clone()
-                  .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), degreesToRadians(end.rotation))))
+                  .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), degreesToRadians(effectiveRotation))))
                 pipeTransform.position.set(...position.toArray())
                 pipeTransform.rotation.set(...rotation.toArray())
               }
             }
           }
           else {
-            const midway = pipe.connections.midway.find(conn => updated.includes(conn.jointId))
+            const midway = pipe.connections.midway.find(conn =>
+              updated.includes(conn.jointId) && !isConnectionDetached(conn.jointId, conn.holeId)
+            )
             if (midway) {
               const joint = joints.find(joint => joint.id === midway.jointId)
               const jointInstance = instances.find(i => i.id === midway.jointId)?.obj
               if (joint && jointInstance) {
-                const hole = joint.holes[midway.holeId]
+                const hole = getEffectiveHoles(joint)[midway.holeId]
                 if (hole) {
                   updated.push(pipe.id)
                   updatePipeJointRelationship(pipe.id, midway.jointId, midway.holeId, 'midway', 'j2p')
+                  const effectiveRotation = getEffectiveConnRotation(midway.rotation, midway.holeId, midway.jointId)
                   const flipQ = midway.reverse
                     ? new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0).applyQuaternion(hole.dir), Math.PI)
                     : new Quaternion()
                   const rotation = jointInstance.quaternion.clone()
                     .multiply(flipQ.clone().multiply(hole.dir.clone()
-                      .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), degreesToRadians(midway.rotation)))))
+                      .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), degreesToRadians(effectiveRotation)))))
                   const pipeDirection = new Vector3(0, 0, 1).applyQuaternion(rotation)
                   const distanceFromStart = clampMidwayPosition(midway.position ?? 0, pipe.length)
                   const holeWorldPosition = jointInstance.position.clone().add(hole.offset.clone().applyQuaternion(jointInstance.quaternion))
@@ -231,11 +306,11 @@ export const useErectorScene = defineStore('erectorScene', {
           if (nextIndex !== -1) {
             nextUpdate.splice(nextIndex, 1)
           }
-          if (pipe.connections.start) {
+          if (pipe.connections.start && !isConnectionDetached(pipe.connections.start.jointId, pipe.connections.start.holeId)) {
             const start = pipe.connections.start
             const joint = joints.find(joint => joint.id === start.jointId)
             if (joint) {
-              joint.holes.forEach((hole, index) => {
+              getEffectiveHoles(joint).forEach((_hole, index) => {
                 const next_start = pipes.find(p =>
                   ((p.connections.start?.jointId === joint.id && p.connections.start?.holeId === index) ||
                     (p.connections.end?.jointId === joint.id && p.connections.end?.holeId === index) ||
@@ -246,12 +321,11 @@ export const useErectorScene = defineStore('erectorScene', {
                   nextUpdate.push(next_start.id)
                 }
               })
-              const hole = joint.holes[start.holeId]
+              const hole = getEffectiveHoles(joint)[start.holeId]
               if (!updated.includes(pipe.connections.start.jointId)) {
                 updated.push(pipe.connections.start.jointId)
                 updatePipeJointRelationship(pipe.id, start.jointId, start.holeId, 'start', 'p2j')
                 if (hole) {
-                  const holeDir = new Euler().setFromQuaternion(hole.dir)
                   const pipeZRot = new Quaternion().setFromEuler(new Euler(0, 0, degreesToRadians(start.rotation)))
                   const invertedHoleDir = hole.dir.clone().multiply(pipeZRot).invert()
                   const rotation = pipeTransform.rotation.clone().multiply(invertedHoleDir)
@@ -264,11 +338,11 @@ export const useErectorScene = defineStore('erectorScene', {
               }
             }
           }
-          if (pipe.connections.end) {
+          if (pipe.connections.end && !isConnectionDetached(pipe.connections.end.jointId, pipe.connections.end.holeId)) {
             const end = pipe.connections.end
             const joint = joints.find(joint => joint.id === end.jointId)
             if (joint) {
-              joint.holes.forEach((hole, index) => {
+              getEffectiveHoles(joint).forEach((_hole, index) => {
                 const next_start = pipes.find(p =>
                   ((p.connections.start?.jointId === joint.id && p.connections.start?.holeId === index) ||
                     (p.connections.end?.jointId === joint.id && p.connections.end?.holeId === index) ||
@@ -279,7 +353,7 @@ export const useErectorScene = defineStore('erectorScene', {
                   nextUpdate.push(next_start.id)
                 }
               })
-              const hole = joint.holes[end.holeId]
+              const hole = getEffectiveHoles(joint)[end.holeId]
               if (!updated.includes(pipe.connections.end.jointId)) {
                 updated.push(pipe.connections.end.jointId)
                 updatePipeJointRelationship(pipe.id, end.jointId, end.holeId, 'end', 'p2j')
@@ -297,9 +371,10 @@ export const useErectorScene = defineStore('erectorScene', {
             }
           }
           pipe.connections.midway.forEach(conn => {
+            if (isConnectionDetached(conn.jointId, conn.holeId)) return
             const joint = joints.find(joint => joint.id === conn.jointId)
             if (joint) {
-              joint.holes.forEach((hole, index) => {
+              getEffectiveHoles(joint).forEach((_hole, index) => {
                 const next_start = pipes.find(p =>
                   ((p.connections.start?.jointId === joint.id && p.connections.start?.holeId === index) ||
                     (p.connections.end?.jointId === joint.id && p.connections.end?.holeId === index) ||
@@ -310,7 +385,7 @@ export const useErectorScene = defineStore('erectorScene', {
                   nextUpdate.push(next_start.id)
                 }
               })
-              const hole = joint.holes[conn.holeId]
+              const hole = getEffectiveHoles(joint)[conn.holeId]
               if (!updated.includes(conn.jointId)) {
                 updated.push(conn.jointId)
                 updatePipeJointRelationship(pipe.id, conn.jointId, conn.holeId, 'midway', 'p2j')

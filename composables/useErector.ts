@@ -2,6 +2,7 @@ import { Quaternion, Vector3 } from 'three'
 import { useErectorGraph } from '~/stores/ErectorGraph'
 import { useErectorScene } from '~/stores/ErectorScene'
 import { useErectorValidation } from '~/stores/ErectorValidation'
+import { useErectorSimulation } from '~/stores/ErectorSimulation'
 import type { ErectorJointHole, ErectorPipe, ErectorPipeConnection } from '~/types/erector_component'
 import erectorComponentDefinition from '~/data/erector_component.json'
 
@@ -13,6 +14,7 @@ export function useErector() {
   const graph = useErectorGraph()
   const scene = useErectorScene()
   const validation = useErectorValidation()
+  const simulation = useErectorSimulation()
 
   // ----------------------------------------------------------------
   // High-level composite operations
@@ -117,6 +119,7 @@ export function useErector() {
     scene.clear()
     graph.clear()
     validation.clear()
+    simulation.clear()
   }
 
   function updateClampedHoleIndex(jointId: string, index: number) {
@@ -217,6 +220,10 @@ export function useErector() {
     get instanceObjectMap() { return scene.instanceObjectMap },
     get rootPipeObjects() { return scene.rootPipeObjects },
 
+    // --- Simulation state ---
+    get isSimulationMode() { return simulation.isSimulationMode },
+    get simulationStates() { return simulation.simulationStates },
+
     // --- Validation state ---
     get invalidConnections() { return validation.invalidConnections },
     get autoResolveConflicts() { return validation.autoResolveConflicts },
@@ -251,6 +258,17 @@ export function useErector() {
     getObjectRotation: (id: string) => scene.getObjectRotation(id),
     getPipeJointRelationship: (pipeId: string, jointId: string, holeId: number, connectionType: 'start' | 'end' | 'midway') =>
       scene.getPipeJointRelationship(pipeId, jointId, holeId, connectionType),
+
+    // --- Simulation operations (pass-through) ---
+    toggleSimulationMode: () => simulation.toggleSimulationMode(),
+    enterSimulationMode: () => simulation.enterSimulationMode(),
+    exitSimulationMode: () => simulation.exitSimulationMode(),
+    initSimulationState: (jointId: string, type: Parameters<typeof simulation.initSimulationState>[1]) =>
+      simulation.initSimulationState(jointId, type),
+    setSimulationAngle: (jointId: string, angle: number) => simulation.setSimulationAngle(jointId, angle),
+    setSpinAngle: (jointId: string, spinAngle: number) => simulation.setSpinAngle(jointId, spinAngle),
+    setAttached: (jointId: string, attached: boolean) => simulation.setAttached(jointId, attached),
+    resetSimulationStates: () => simulation.resetSimulationStates(),
 
     // --- Validation operations (pass-through) ---
     validateConnections: () => validation.validateConnections(),

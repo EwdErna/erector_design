@@ -9,8 +9,13 @@
       </div>
     </div>
     <div class="buttons">
-      <div class="button" @click="download">Download</div>
-      <div class="button" @click="upload">Upload</div>
+      <div
+        class="button"
+        :class="{ active: erector.isSimulationMode }"
+        @click="toggleSimulation"
+      >{{ erector.isSimulationMode ? 'Design Mode' : 'Simulation' }}</div>
+      <div class="button" :class="{ disabled: erector.isSimulationMode }" @click="download">Download</div>
+      <div class="button" :class="{ disabled: erector.isSimulationMode }" @click="upload">Upload</div>
       <input ref="fileInput" type="file" accept=".json" @change="handleFileUpload" style="display: none;">
     </div>
   </div>
@@ -18,6 +23,30 @@
 
 <script lang="ts" setup>
 import type { ErectorPipe } from '~/types/erector_component'
+import { definitions } from '~/utils/Erector/erectorComponentDefinition'
+
+const erector = useErector()
+
+function toggleSimulation() {
+  if (erector.isSimulationMode) {
+    erector.exitSimulationMode()
+    erector.resetSimulationStates()
+  } else {
+    erector.enterSimulationMode()
+    const allTypes = [
+      ...definitions.pla_joints.categories.flatMap(c => c.types),
+      ...definitions.metal_joints,
+    ]
+    for (const joint of erector.joints) {
+      const movableDef = (allTypes.find(t => t.name === joint.name) as any)?.movable
+      if (!movableDef) continue
+      erector.initSimulationState(joint.id, movableDef.type)
+      if (movableDef.type === 'detachable') {
+        erector.setAttached(joint.id, false)
+      }
+    }
+  }
+}
 
 type UploadedStructure = {
   // User-facing JSON uses millimeters for numeric length/position values.
@@ -221,6 +250,14 @@ function handleFileUpload(event: Event) {
         &.disabled {
           background-color: #757575;
           pointer-events: none;
+        }
+
+        &.active {
+          background-color: #e67e00;
+
+          &:hover {
+            background-color: #b35f00;
+          }
         }
       }
     }
