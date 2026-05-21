@@ -141,6 +141,31 @@
       </div>
       <div>Joint ID: {{ selectedJoint.id }}</div>
       <div>Joint Name: {{ selectedJoint.name }}</div>
+      <div v-if="selectedJointMovable">
+        <hr>
+        <h4>可動設定</h4>
+        <div v-if="selectedJointMovable.type === 'pivot'">
+          タイプ: ピボット
+        </div>
+        <div v-else-if="selectedJointMovable.type === 'detachable'">
+          タイプ: 着脱式
+        </div>
+        <div v-else-if="selectedJointMovable.type === 'free_rotation'">
+          <div>タイプ: 自由回転</div>
+          <div>
+            固定穴:
+            <label v-for="_, i in selectedJoint.holes" :key="`${selectedJoint.id}-${i}`">
+              <input
+                type="radio"
+                :name="`clampedHole-${selectedJoint.id}`"
+                :value="i"
+                :checked="clampedHoleModel === i"
+                @change="clampedHoleModel = i"
+              />穴{{ i }}
+            </label>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -149,12 +174,31 @@
 import { useObjectSelection } from '~/stores/ObjectSelection';
 import { isErectorPipe, type ErectorJoint, type ErectorPipe, type ErectorPipeConnection } from '~/types/erector_component';
 import { radiansToDegrees, degreesToRadians } from '~/utils/angleUtils';
+import { definitions } from '~/utils/Erector/erectorComponentDefinition';
 
 const objectSelection = useObjectSelection()
 const erector = useErector()
 const selectedPipe = computed(() => erector.pipes.find(p => p.id === objectSelection.object))
 const selectedJoint = computed(() => erector.joints.find(j => j.id === objectSelection.object))
 const selectedObject = computed(() => erector.instances.find(i => i.id === objectSelection.object))
+
+const allJointTypes = [
+  ...definitions.pla_joints.categories.flatMap(c => c.types),
+  ...definitions.metal_joints,
+]
+const selectedJointMovable = computed(() => {
+  if (!selectedJoint.value) return undefined
+  return allJointTypes.find(t => t.name === selectedJoint.value!.name)?.movable
+})
+
+const clampedHoleModel = computed({
+  get: () => selectedJoint.value?.clampedHoleIndex ?? 0,
+  set: (value: number) => {
+    if (selectedJoint.value) {
+      erector.updateClampedHoleIndex(selectedJoint.value.id, value)
+    }
+  }
+})
 
 // 入力用の一時的な値を管理するref
 const inputPosition = ref([0, 0, 0])

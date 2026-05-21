@@ -13,11 +13,11 @@ export type ErectorPipeComponent = {
 
 export type JointMovableDefinition =
   | {
-      type: "pivot",
-      pivotCenter: [number, number, number],
-      pivotAxis: [number, number, number],
-      rotatingHoles: number[],
-    }
+    type: "pivot",
+    pivotCenter: [number, number, number],
+    pivotAxis: [number, number, number],
+    rotatingHoles: number[],
+  }
   | { type: "free_rotation" }
   | { type: "detachable", detachableHoleIndex: number }
 

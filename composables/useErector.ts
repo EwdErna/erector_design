@@ -119,7 +119,11 @@ export function useErector() {
     validation.clear()
   }
 
-  function loadFromStructure(structure: { pipes: ErectorPipe[], joints: { id: string, name: string }[], rootTransforms?: { pipeId: string, position: [number, number, number], rotation: [number, number, number] }[] }) {
+  function updateClampedHoleIndex(jointId: string, index: number) {
+    graph.updateClampedHoleIndex(jointId, index)
+  }
+
+  function loadFromStructure(structure: { pipes: ErectorPipe[], joints: { id: string, name: string, clampedHoleIndex?: number }[], rootTransforms?: { pipeId: string, position: [number, number, number], rotation: [number, number, number] }[] }) {
     clearAll()
 
     const three = useThree()
@@ -145,6 +149,10 @@ export function useErector() {
             dir: new Quaternion().setFromUnitVectors(new Vector3(0, 0, 1), new Vector3().fromArray(j.to)),
             offset: new Vector3().fromArray(j.start ?? [0, 0, 0])
           })), joint.id)
+          if (typeof joint.clampedHoleIndex === 'number') {
+            const addedJoint = graph.joints.find(j => j.id === joint.id)
+            if (addedJoint) addedJoint.clampedHoleIndex = joint.clampedHoleIndex
+          }
         }
       }
 
@@ -226,6 +234,7 @@ export function useErector() {
     updatePipe,
     addConnection,
     updateConnection,
+    updateClampedHoleIndex,
     clearAll,
     loadFromStructure,
 

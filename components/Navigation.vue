@@ -86,12 +86,11 @@ function download() {
 
   const output = {
     pipes,
-    joints: erector.joints.map(joint => {
-      return {
-        id: joint.id,
-        name: joint.name
-      }
-    }),
+    joints: erector.joints.map(joint => ({
+      id: joint.id,
+      name: joint.name,
+      ...(joint.clampedHoleIndex !== undefined && { clampedHoleIndex: joint.clampedHoleIndex }),
+    })),
     ...(rootTransforms.length > 0 && { rootTransforms })
   }
   const data = new Blob([JSON.stringify(output, null, 4)], { type: 'application/json' })

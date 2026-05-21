@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia'
-import type { ErectorJoint, ErectorJointHole, ErectorPipe, ErectorPipeConnection } from '~/types/erector_component'
+import type { ErectorComponent, ErectorJoint, ErectorJointHole, ErectorPipe, ErectorPipeConnection, JointMovableDefinition } from '~/types/erector_component'
+import erectorComponentDefinitionRaw from '~/data/erector_component.json'
+const erectorComponentDefinition = erectorComponentDefinitionRaw as unknown as ErectorComponent
 
 export type PipeJointRelationship = {
   pipeId: string
@@ -138,16 +140,31 @@ export const useErectorGraph = defineStore('erectorGraph', {
     addJoint(name: string, holes: ErectorJointHole[], id?: string): string {
       if (!id) id = this.newJointId(name)
       if (!this.joints.some(j => j.id === id)) {
-        this.joints.push({ id, name, holes })
+        const allTypes = [
+          ...erectorComponentDefinition.pla_joints.categories.flatMap(c => c.types),
+          ...erectorComponentDefinition.metal_joints,
+        ] as unknown as { name: string, movable?: JointMovableDefinition }[]
+        const movableDef = allTypes.find(t => t.name === name)?.movable
+        const jointData: ErectorJoint = { id, name, holes }
+        if (movableDef?.type === 'free_rotation') {
+          jointData.clampedHoleIndex = 0
+        }
+        this.joints.push(jointData)
       }
       return id
+    },
+
+    updateClampedHoleIndex(jointId: string, index: number) {
+      const joint = this.joints.find(j => j.id === jointId)
+      if (!joint) return
+      joint.clampedHoleIndex = index
     },
 
     addConnection(pipeId: string, jointId: string, holeId: number, side: 'start' | 'end' | 'midway', rotation?: number, position?: number, id?: string, reverse?: boolean) {
       const pipe = this.pipes.find(p => p.id === pipeId)
       const joint = this.joints.find(j => j.id === jointId)
       if (!pipe || !joint) return
-      const hole = joint.holes[holeId]
+      const hole = (joint.holes)[holeId]
       if (!hole) return
       switch (side) {
         case 'start':
