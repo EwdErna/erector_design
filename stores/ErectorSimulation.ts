@@ -24,7 +24,7 @@ export const useErectorSimulation = defineStore('erectorSimulation', {
       if (type === 'pivot') {
         this.simulationStates[jointId] = { type: 'pivot', angle: 0 }
       } else if (type === 'free_rotation') {
-        this.simulationStates[jointId] = { type: 'free_rotation', spinAngle: 0 }
+        this.simulationStates[jointId] = { type: 'free_rotation', spinAngle: 0, orbitAngle: 0 }
       } else {
         this.simulationStates[jointId] = { type: 'detachable', attached: true }
       }
@@ -38,6 +38,11 @@ export const useErectorSimulation = defineStore('erectorSimulation', {
     setSpinAngle(jointId: string, spinAngle: number) {
       const state = this.simulationStates[jointId]
       if (state?.type === 'free_rotation') state.spinAngle = spinAngle
+    },
+
+    setOrbitAngle(jointId: string, orbitAngle: number) {
+      const state = this.simulationStates[jointId]
+      if (state?.type === 'free_rotation') state.orbitAngle = orbitAngle
     },
 
     setAttached(jointId: string, attached: boolean) {

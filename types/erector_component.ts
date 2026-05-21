@@ -40,7 +40,7 @@ export type ErectorJointHole = {
 
 export type JointSimulationState =
   | { type: "pivot"; angle: number }
-  | { type: "free_rotation"; spinAngle: number }
+  | { type: "free_rotation"; spinAngle: number; orbitAngle: number }
   | { type: "detachable"; attached: boolean }
 
 export type ErectorJoint = {

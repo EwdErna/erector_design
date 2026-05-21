@@ -7,7 +7,7 @@ import { radiansToDegrees } from '~/utils/angleUtils'
 import { calculateSignedAngle, disposeDebugObjects, isMeshWithBasicMaterial } from './ControlsShared'
 
 type SimGizmoUserData = {
-  role: 'pivot' | 'spin'
+  role: 'pivot' | 'spin' | 'orbit'
   jointId: string
   axisWorld: Vector3
   centerWorld: Vector3
@@ -80,31 +80,46 @@ export class SimulationControls extends Controls<{
       this.gizmos.push(gizmo)
     }
     else if (movableDef.type === 'free_rotation') {
-      // Arc on the non-clamped hole axis for spin
       const clampedIdx = joint.clampedHoleIndex ?? 0
       const nonClampedIdx = 1 - clampedIdx
       const nonClampedHole = joint.holes[nonClampedIdx]
-      if (!nonClampedHole) return
+      const clampedHole = joint.holes[clampedIdx]
+      if (!nonClampedHole || !clampedHole) return
 
-      const holeCenterLocal = nonClampedHole.offset.clone()
-      const holeAxisLocal = new Vector3(0, 0, 1).applyQuaternion(nonClampedHole.dir)
+      const holeCenterWorld = nonClampedHole.offset.clone().applyQuaternion(object.quaternion).add(object.position)
+      const holeAxisWorld = new Vector3(0, 0, 1).applyQuaternion(nonClampedHole.dir).applyQuaternion(object.quaternion)
+      const axisQuat = new Quaternion().setFromUnitVectors(new Vector3(0, 0, 1), holeAxisWorld)
 
-      const holeCenterWorld = holeCenterLocal.clone().applyQuaternion(object.quaternion).add(object.position)
-      const holeAxisWorld = holeAxisLocal.clone().applyQuaternion(object.quaternion)
-
-      const gizmo = this.makeArc(0x00e5ff, 0.06)
-      gizmo.position.copy(holeCenterWorld)
-      gizmo.quaternion.setFromUnitVectors(new Vector3(0, 0, 1), holeAxisWorld)
-      const userData: SimGizmoUserData = {
+      // Spin gizmo: 非固定穴中心、固定半径
+      const spinGizmo = this.makeArc(0x00e5ff, 0.06)
+      spinGizmo.position.copy(holeCenterWorld)
+      spinGizmo.quaternion.copy(axisQuat)
+      spinGizmo.userData = {
         role: 'spin',
         jointId: joint.id,
         axisWorld: holeAxisWorld,
         centerWorld: holeCenterWorld,
         startAngle: 0,
-      }
-      gizmo.userData = userData
-      this.gizmoGroup.add(gizmo)
-      this.gizmos.push(gizmo)
+      } satisfies SimGizmoUserData
+      this.gizmoGroup.add(spinGizmo)
+      this.gizmos.push(spinGizmo)
+
+      // Orbit gizmo: 同中心・同軸、半径 = 二穴間距離
+      const clampedOffsetWorld = clampedHole.offset.clone().applyQuaternion(object.quaternion)
+      const nonClampedOffsetWorld = nonClampedHole.offset.clone().applyQuaternion(object.quaternion)
+      const orbitRadius = Math.max(clampedOffsetWorld.distanceTo(nonClampedOffsetWorld), 0.04)
+      const orbitGizmo = this.makeArc(0xff8c00, orbitRadius)
+      orbitGizmo.position.copy(holeCenterWorld)
+      orbitGizmo.quaternion.copy(axisQuat)
+      orbitGizmo.userData = {
+        role: 'orbit',
+        jointId: joint.id,
+        axisWorld: holeAxisWorld,
+        centerWorld: holeCenterWorld,
+        startAngle: 0,
+      } satisfies SimGizmoUserData
+      this.gizmoGroup.add(orbitGizmo)
+      this.gizmos.push(orbitGizmo)
     }
   }
 
@@ -182,7 +197,7 @@ export class SimulationControls extends Controls<{
     if (simState?.type === 'pivot') {
       this.dragStartAngle = simState.angle
     } else if (simState?.type === 'free_rotation') {
-      this.dragStartAngle = simState.spinAngle
+      this.dragStartAngle = ud.role === 'orbit' ? simState.orbitAngle : simState.spinAngle
     } else {
       this.dragStartAngle = 0
     }
@@ -214,6 +229,8 @@ export class SimulationControls extends Controls<{
       erector.setSimulationAngle(ud.jointId, newAngle)
     } else if (ud.role === 'spin') {
       erector.setSpinAngle(ud.jointId, newAngle)
+    } else if (ud.role === 'orbit') {
+      erector.setOrbitAngle(ud.jointId, newAngle)
     }
     this.dispatchEvent({ type: 'change', value: true })
   }

@@ -45,6 +45,7 @@ export const useErectorScene = defineStore('erectorScene', {
     renderCount: 0,
     pipeJointRelationships: [] as PipeJointRelationship[],
     debugArrows: [] as ArrowHelper[],
+    savedRootTransforms: [] as { id: string, position: Vector3, rotation: Quaternion }[],
   }),
   actions: {
     addPipeObject(id: string, diameter: number, length: number) {
@@ -230,6 +231,62 @@ export const useErectorScene = defineStore('erectorScene', {
         return connRotation
       }
 
+      // orbit パス用: 非固定穴からジョイントを決める p2j で orbitAngle を加算する
+      function getP2JEffectiveConnRotation(connRotation: number, holeId: number, jointId: string): number {
+        if (!isSimMode) return connRotation
+        const simState = simulation.simulationStates[jointId]
+        if (simState?.type !== 'free_rotation') return connRotation
+        const joint = joints.find(j => j.id === jointId)
+        if (!joint) return connRotation
+        const movableDef = getMovableDefForJoint(joint.name)
+        if (movableDef?.type !== 'free_rotation') return connRotation
+        const nonClampedIdx = 1 - (joint.clampedHoleIndex ?? 0)
+        if (holeId === nonClampedIdx) {
+          return connRotation + radiansToDegrees(simState.orbitAngle)
+        }
+        return connRotation
+      }
+
+      // excludeJointId を除いたグラフで BFS し、currentRoots のどれかから targetPipeId に到達できる root ID を返す
+      function findRootAncestorExcludingJoint(
+        targetPipeId: string,
+        excludeJointId: string,
+        currentRoots: transform[]
+      ): string | null {
+        const visited = new Set<string>()
+        const queue: Array<{ pipeId: string; rootId: string }> =
+          currentRoots.map(rt => ({ pipeId: rt.id, rootId: rt.id }))
+        while (queue.length > 0) {
+          const item = queue.shift()!
+          if (visited.has(item.pipeId)) continue
+          visited.add(item.pipeId)
+          if (item.pipeId === targetPipeId) return item.rootId
+          const pipe = pipes.find(p => p.id === item.pipeId)
+          if (!pipe) continue
+          const adjacentJointIds = new Set<string>()
+          if (pipe.connections.start?.jointId && pipe.connections.start.jointId !== excludeJointId)
+            adjacentJointIds.add(pipe.connections.start.jointId)
+          if (pipe.connections.end?.jointId && pipe.connections.end.jointId !== excludeJointId)
+            adjacentJointIds.add(pipe.connections.end.jointId)
+          pipe.connections.midway
+            .filter(m => m.jointId !== excludeJointId)
+            .forEach(m => adjacentJointIds.add(m.jointId))
+          for (const jointId of adjacentJointIds) {
+            for (const otherPipe of pipes) {
+              if (visited.has(otherPipe.id)) continue
+              if (
+                otherPipe.connections.start?.jointId === jointId ||
+                otherPipe.connections.end?.jointId === jointId ||
+                otherPipe.connections.midway.some(m => m.jointId === jointId)
+              ) {
+                queue.push({ pipeId: otherPipe.id, rootId: item.rootId })
+              }
+            }
+          }
+        }
+        return null
+      }
+
       function isConnectionDetached(jointId: string, holeId: number): boolean {
         if (!isSimMode) return false
         const simState = simulation.simulationStates[jointId]
@@ -408,7 +465,7 @@ export const useErectorScene = defineStore('erectorScene', {
                     : new Quaternion()
                   const rotation = pipeTransform.rotation.clone()
                     .multiply(flipQ.clone().multiply(hole.dir.clone()
-                      .multiply(new Quaternion().setFromEuler(new Euler(0, 0, degreesToRadians(conn.rotation))))).invert())
+                      .multiply(new Quaternion().setFromEuler(new Euler(0, 0, degreesToRadians(getP2JEffectiveConnRotation(conn.rotation, conn.holeId, conn.jointId)))))).invert())
                   const position = pipeTransform.position.clone()
                     .add(new Vector3(0, 0, 1).applyQuaternion(pipeTransform.rotation).multiplyScalar(clampMidwayPosition(conn.position, pipe.length)))
                     .add(hole.offset.clone().negate().applyQuaternion(rotation))
@@ -423,8 +480,95 @@ export const useErectorScene = defineStore('erectorScene', {
       }
 
       return (rootTransforms: transform[]) => {
+        // root swap: free_rotation ジョイントのシミュレーション用 BFS ルート差し替え
+        let effectiveRoots = rootTransforms
+        if (isSimMode) {
+          const filteredRoots = [...rootTransforms]
+          const addedRoots: transform[] = []
+          let swapped = false
+          const orbitSwappedJoints = new Set<string>()
+
+          // orbit swap: 固定穴パイプが root 連鎖にある場合に非固定穴パイプへ root を swap
+          for (const joint of joints) {
+            const simState = simulation.simulationStates[joint.id]
+            if (simState?.type !== 'free_rotation' || Math.abs(simState.orbitAngle) < 1e-10) continue
+            const movableDef = getMovableDefForJoint(joint.name)
+            if (movableDef?.type !== 'free_rotation') continue
+            const clampedIdx = joint.clampedHoleIndex ?? 0
+            const nonClampedIdx = 1 - clampedIdx
+            const clampedPipe = pipes.find(p =>
+              p.connections.midway.some(c => c.jointId === joint.id && c.holeId === clampedIdx)
+            )
+            const nonClampedPipe = pipes.find(p =>
+              p.connections.midway.some(c => c.jointId === joint.id && c.holeId === nonClampedIdx)
+            )
+            if (!clampedPipe || !nonClampedPipe) continue
+            let clampedRootIdx = filteredRoots.findIndex(rt => rt.id === clampedPipe.id)
+            if (clampedRootIdx === -1) {
+              // clampedPipe 自体は root でないが root 連鎖に属する場合: 祖先 root を特定してスワップ
+              const ancestorRootId = findRootAncestorExcludingJoint(clampedPipe.id, joint.id, filteredRoots)
+              if (!ancestorRootId) continue
+              clampedRootIdx = filteredRoots.findIndex(rt => rt.id === ancestorRootId)
+              if (clampedRootIdx === -1) continue
+            }
+            const nonClampedObj = instances.find(i => i.id === nonClampedPipe.id)?.obj
+            if (!nonClampedObj) continue
+            filteredRoots.splice(clampedRootIdx, 1)
+            if (!filteredRoots.some(rt => rt.id === nonClampedPipe.id) && !addedRoots.some(rt => rt.id === nonClampedPipe.id)) {
+              addedRoots.push({
+                id: nonClampedPipe.id,
+                position: nonClampedObj.position.clone(),
+                rotation: nonClampedObj.quaternion.clone(),
+              })
+            }
+            orbitSwappedJoints.add(joint.id)
+            swapped = true
+          }
+
+          // spin swap: 非固定穴パイプが root 連鎖にある場合に固定穴パイプへ root を swap
+          // BFS が 固定穴パイプ → ジョイント(p2j) → 非固定穴パイプ(j2p+spinAngle) と流れ、
+          // getEffectiveConnRotation が spinAngle を非固定穴の j2p に適用できるようになる
+          for (const joint of joints) {
+            if (orbitSwappedJoints.has(joint.id)) continue
+            const simState = simulation.simulationStates[joint.id]
+            if (simState?.type !== 'free_rotation' || Math.abs(simState.spinAngle) < 1e-10) continue
+            const movableDef = getMovableDefForJoint(joint.name)
+            if (movableDef?.type !== 'free_rotation') continue
+            const clampedIdx = joint.clampedHoleIndex ?? 0
+            const nonClampedIdx = 1 - clampedIdx
+            const clampedPipe = pipes.find(p =>
+              p.connections.midway.some(c => c.jointId === joint.id && c.holeId === clampedIdx)
+            )
+            const nonClampedPipe = pipes.find(p =>
+              p.connections.midway.some(c => c.jointId === joint.id && c.holeId === nonClampedIdx)
+            )
+            if (!clampedPipe || !nonClampedPipe) continue
+            let nonClampedRootIdx = filteredRoots.findIndex(rt => rt.id === nonClampedPipe.id)
+            if (nonClampedRootIdx === -1) {
+              // nonClampedPipe 自体は root でないが root 連鎖に属する場合: 祖先 root を特定してスワップ
+              const ancestorRootId = findRootAncestorExcludingJoint(nonClampedPipe.id, joint.id, filteredRoots)
+              if (!ancestorRootId) continue
+              nonClampedRootIdx = filteredRoots.findIndex(rt => rt.id === ancestorRootId)
+              if (nonClampedRootIdx === -1) continue
+            }
+            const clampedObj = instances.find(i => i.id === clampedPipe.id)?.obj
+            if (!clampedObj) continue
+            filteredRoots.splice(nonClampedRootIdx, 1)
+            if (!filteredRoots.some(rt => rt.id === clampedPipe.id) && !addedRoots.some(rt => rt.id === clampedPipe.id)) {
+              addedRoots.push({
+                id: clampedPipe.id,
+                position: clampedObj.position.clone(),
+                rotation: clampedObj.quaternion.clone(),
+              })
+            }
+            swapped = true
+          }
+
+          if (swapped) effectiveRoots = [...filteredRoots, ...addedRoots]
+        }
+
         const updatedSet = new Set(updated)
-        rootTransforms.forEach(rootTransform => {
+        effectiveRoots.forEach(rootTransform => {
           const root = pipes.find(pipe => pipe.id === rootTransform.id)
           if (!root) return
           const rootObject = instances.find(i => i.id === rootTransform.id)?.obj
@@ -536,6 +680,25 @@ export const useErectorScene = defineStore('erectorScene', {
       this.instances = []
       this.pipeJointRelationships = []
       this.renderCount = 0
+      this.savedRootTransforms = []
+    },
+
+    saveRootTransforms() {
+      const graph = useErectorGraph()
+      this.savedRootTransforms = graph.rootPipeIds.flatMap(id => {
+        const obj = this.instances.find(i => i.id === id)?.obj
+        if (!obj) return []
+        return [{ id, position: obj.position.clone(), rotation: obj.quaternion.clone() }]
+      })
+    },
+
+    restoreRootTransforms() {
+      this.savedRootTransforms.forEach(saved => {
+        const obj = this.instances.find(i => i.id === saved.id)?.obj
+        if (!obj) return
+        obj.position.copy(saved.position)
+        obj.quaternion.copy(saved.rotation)
+      })
     },
   },
   getters: {

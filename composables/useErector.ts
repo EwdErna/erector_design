@@ -260,13 +260,28 @@ export function useErector() {
       scene.getPipeJointRelationship(pipeId, jointId, holeId, connectionType),
 
     // --- Simulation operations (pass-through) ---
-    toggleSimulationMode: () => simulation.toggleSimulationMode(),
-    enterSimulationMode: () => simulation.enterSimulationMode(),
-    exitSimulationMode: () => simulation.exitSimulationMode(),
+    toggleSimulationMode: () => {
+      if (simulation.isSimulationMode) {
+        simulation.exitSimulationMode()
+        scene.restoreRootTransforms()
+      } else {
+        scene.saveRootTransforms()
+        simulation.enterSimulationMode()
+      }
+    },
+    enterSimulationMode: () => {
+      scene.saveRootTransforms()
+      simulation.enterSimulationMode()
+    },
+    exitSimulationMode: () => {
+      simulation.exitSimulationMode()
+      scene.restoreRootTransforms()
+    },
     initSimulationState: (jointId: string, type: Parameters<typeof simulation.initSimulationState>[1]) =>
       simulation.initSimulationState(jointId, type),
     setSimulationAngle: (jointId: string, angle: number) => simulation.setSimulationAngle(jointId, angle),
     setSpinAngle: (jointId: string, spinAngle: number) => simulation.setSpinAngle(jointId, spinAngle),
+    setOrbitAngle: (jointId: string, orbitAngle: number) => simulation.setOrbitAngle(jointId, orbitAngle),
     setAttached: (jointId: string, attached: boolean) => simulation.setAttached(jointId, attached),
     resetSimulationStates: () => simulation.resetSimulationStates(),
 
