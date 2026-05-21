@@ -41,7 +41,7 @@ type InvalidConnectionForViz = {
 
 export const useErectorScene = defineStore('erectorScene', {
   state: () => ({
-    instances: [] as { id: string, obj?: Object3D }[],
+    instances: [] as { id: string, obj?: Object3D, movablePart?: Object3D }[],
     renderCount: 0,
     pipeJointRelationships: [] as PipeJointRelationship[],
     debugArrows: [] as ArrowHelper[],
@@ -78,7 +78,8 @@ export const useErectorScene = defineStore('erectorScene', {
         })
         model.name = id
         model.position.copy(spawnPos)
-        this.instances.push({ id, obj: model })
+        const movablePart = model.getObjectByName('Move') ?? undefined
+        this.instances.push({ id, obj: model, movablePart })
         if (three.scene) {
           three.scene.add(model)
         }
@@ -195,6 +196,18 @@ export const useErectorScene = defineStore('erectorScene', {
             simulatedHoles.set(joint.id, computePivotHoles(joint, movableDef.pivotCenter, movableDef.pivotAxis, movableDef.rotatingHoles, simState.angle))
           }
         }
+      }
+
+      // Update visual rotation of the "Move" child node for pivot joints
+      for (const instance of instances) {
+        if (!instance.movablePart) continue
+        const joint = joints.find(j => j.id === instance.id)
+        if (!joint) continue
+        const movableDef = getMovableDefForJoint(joint.name)
+        if (movableDef?.type !== 'pivot') continue
+        const simState = isSimMode ? simulation.simulationStates[joint.id] : undefined
+        const angle = simState?.type === 'pivot' ? simState.angle : 0
+        instance.movablePart.quaternion.setFromAxisAngle(new Vector3(...movableDef.pivotAxis), angle)
       }
 
       function getEffectiveHoles(joint: ErectorJoint): ErectorJointHole[] {
