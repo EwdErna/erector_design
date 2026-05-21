@@ -78,7 +78,7 @@
 </template>
 
 <script lang="ts" setup>
-const erector = useErectorPipeJoint()
+const erector = useErector()
 const hasErrors = computed(() => erector.rootMerges.length > 0 || erector.invalidConnections.length > 0)
 </script>
 

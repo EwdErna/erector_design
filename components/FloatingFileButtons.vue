@@ -41,7 +41,7 @@ const isValidRootTransform = (value: unknown): value is { pipeId: string, positi
 
 function download() {
   const a = document.body.appendChild(document.createElement('a'))
-  const erector = useErectorPipeJoint()
+  const erector = useErector()
   const rootTransforms = erector.rootPipeIds
     .map(rootPipeId => {
       const rootInstance = erector.instances.find(i => i.id === rootPipeId)?.obj
@@ -121,7 +121,7 @@ function handleFileUpload(event: Event) {
           }
           : {})
       }
-      const erector = useErectorPipeJoint()
+      const erector = useErector()
       const objectSelection = useObjectSelection()
       erector.clearAll()
       objectSelection.select('')

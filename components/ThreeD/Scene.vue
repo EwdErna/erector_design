@@ -14,6 +14,8 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { ErectorPipe } from '~/types/erector_component';
 import { JointControls } from '~/utils/Erector/JointControls';
 import { PipeControls } from '~/utils/Erector/PipeControls';
+import { SimulationControls } from '~/utils/Erector/SimulationControls';
+import { definitions } from '~/utils/Erector/erectorComponentDefinition';
 import { degreesToRadians } from '~/utils/angleUtils';
 
 const container = useTemplateRef("container")
@@ -25,7 +27,13 @@ let camera: PerspectiveCamera
 let controls: OrbitControls
 let jointControls: JointControls
 let unifiedPipeControls: PipeControls
-const erector = useErectorPipeJoint()
+let simulationControls: SimulationControls
+const erector = useErector()
+
+const allJointTypes = [
+  ...definitions.pla_joints.categories.flatMap(c => c.types),
+  ...definitions.metal_joints,
+]
 
 // タッチ開始座標を記録してドラッグとタップを区別する
 let touchStartX = 0
@@ -59,18 +67,36 @@ function selectObject(event: MouseEvent) {
       if (searchObjects.includes(rootObject))
         break
     }
-    console.log(rootObject)
     const jointObject = erector.joints.find(j => j.id === rootObject.name)
     const pipeObject = erector.pipes.find(p => p.id === rootObject.name)
-    if (jointObject) {
-      jointControls.setTarget(jointObject, rootObject as Mesh)
-      unifiedPipeControls.clear()
-    } else if (pipeObject) {
-      unifiedPipeControls.setTarget(pipeObject, rootObject as Mesh)
+
+    if (erector.isSimulationMode) {
+      // Simulation mode: only activate SimulationControls for movable joints
       jointControls.clear()
+      unifiedPipeControls.clear()
+      if (jointObject) {
+        const movableDef = (allJointTypes.find(t => t.name === jointObject.name) as any)?.movable
+        if (movableDef) {
+          simulationControls.setTarget(jointObject, rootObject as Object3D, movableDef)
+        } else {
+          simulationControls.clear()
+        }
+      } else {
+        simulationControls.clear()
+      }
     } else {
-      jointControls.clear()
-      unifiedPipeControls.clear()
+      // Design mode: normal editing controls
+      simulationControls.clear()
+      if (jointObject) {
+        jointControls.setTarget(jointObject, rootObject as Mesh)
+        unifiedPipeControls.clear()
+      } else if (pipeObject) {
+        unifiedPipeControls.setTarget(pipeObject, rootObject as Mesh)
+        jointControls.clear()
+      } else {
+        jointControls.clear()
+        unifiedPipeControls.clear()
+      }
     }
     objectSelection.select(rootObject.name)
   }
@@ -164,6 +190,13 @@ const setupScene = () => {
   scene.add(unifiedPipeControls.controlGroup)
   scene.add(unifiedPipeControls.debugObjects)
 
+  simulationControls = new SimulationControls(camera, renderer.domElement)
+  simulationControls.addEventListener('dragging-changed', e => {
+    controls.enabled = !e.value
+  })
+  scene.add(simulationControls.gizmoGroup)
+  scene.add(simulationControls.debugObjects)
+
   const gridHelper = new GridHelper(10, 10)
   scene.add(gridHelper)
 
@@ -207,6 +240,16 @@ watch(() => objectSelection.object, (newSelection) => {
   if (!newSelection || newSelection === '') {
     jointControls?.clear()
     unifiedPipeControls?.clear()
+    simulationControls?.clear()
+  }
+})
+
+watch(() => erector.isSimulationMode, (isSimMode) => {
+  if (!isSimMode) {
+    simulationControls?.clear()
+  } else {
+    jointControls?.clear()
+    unifiedPipeControls?.clear()
   }
 })
 
@@ -235,6 +278,7 @@ onBeforeUnmount(() => {
   resizeObserver = null
   if (jointControls) jointControls.dispose()
   if (unifiedPipeControls) unifiedPipeControls.dispose()
+  if (simulationControls) simulationControls.dispose()
   if (controls) controls.dispose()
   if (renderer) renderer.dispose()
 })

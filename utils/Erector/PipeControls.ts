@@ -190,7 +190,7 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
   private createConnectionGizmos() {
     if (!this.target) return;
 
-    const connections = useErectorPipeJoint()
+    const connections = useErector()
     const pipe = this.target.pipe
 
     // Create gizmos for each connection
@@ -633,7 +633,7 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
   private applyLengthToPipe(newLength: number) {
     if (!this.target) return;
 
-    const connections = useErectorPipeJoint();
+    const connections = useErector();
     connections.updatePipe(this.target.pipe.id, 'length', newLength);
     this.currentValue = newLength;
     this.updateGizmoPositions(newLength);
@@ -679,7 +679,7 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
   }
 
   private applyRotationToConnection(rotationAngle: number, data: ConnectionGizmoData) {
-    const connections = useErectorPipeJoint();
+    const connections = useErector();
     connections.updateConnection(data.connection.id, { rotation: normalizeAngle180(rotationAngle) });
     this.currentValue = rotationAngle;
   }
@@ -687,7 +687,7 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
   private applyPositionToConnection(position: number, data: PositionGizmoData) {
     if (!this.target) return;
 
-    const connections = useErectorPipeJoint();
+    const connections = useErector();
     connections.updateConnection(data.connection.id, { position });
     this.currentValue = position;
 
@@ -705,7 +705,7 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
   private getPipeJointRelationshipType(data: ConnectionGizmoData | PositionGizmoData): 'j2p' | 'p2j' | null {
     if (!this.target) return null;
 
-    const connections = useErectorPipeJoint();
+    const connections = useErector();
     return connections.getPipeJointRelationship(
       this.target.pipe.id,
       data.jointId,
