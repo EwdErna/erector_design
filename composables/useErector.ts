@@ -5,6 +5,7 @@ import { useErectorValidation } from '~/stores/ErectorValidation'
 import { useErectorSimulation } from '~/stores/ErectorSimulation'
 import type { ErectorJointHole, ErectorPipe, ErectorPipeConnection } from '~/types/erector_component'
 import erectorComponentDefinition from '~/data/erector_component.json'
+import { getMovableDefForJoint } from '~/utils/Erector/erectorComponentDefinition'
 
 /**
  * useErector — 3ストアをまとめるファサード composable。
@@ -198,6 +199,30 @@ export function useErector() {
     validation.validateConnections()
   }
 
+  function findCoAxisJointIds(drivingJointId: string): string[] {
+    const drivingJoint = graph.joints.find(j => j.id === drivingJointId)
+    if (!drivingJoint) return []
+    const movableDef = getMovableDefForJoint(drivingJoint.name)
+    if (movableDef?.type !== 'free_rotation') return []
+    const nonClampedIdx = 1 - (drivingJoint.clampedHoleIndex ?? 0)
+    const orbitAxisPipe = graph.pipes.find(p =>
+      p.connections.midway.some(c => c.jointId === drivingJointId && c.holeId === nonClampedIdx)
+    )
+    if (!orbitAxisPipe) return []
+    const result: string[] = []
+    for (const conn of orbitAxisPipe.connections.midway) {
+      if (conn.jointId === drivingJointId) continue
+      const otherJoint = graph.joints.find(j => j.id === conn.jointId)
+      if (!otherJoint) continue
+      const otherMovableDef = getMovableDefForJoint(otherJoint.name)
+      if (otherMovableDef?.type !== 'free_rotation') continue
+      const otherNonClampedIdx = 1 - (otherJoint.clampedHoleIndex ?? 0)
+      if (conn.holeId !== otherNonClampedIdx) continue
+      result.push(conn.jointId)
+    }
+    return result
+  }
+
   // ----------------------------------------------------------------
   // Return unified API surface (same shape as old useErectorPipeJoint)
   // JS getters preserve Pinia reactivity when accessed in templates.
@@ -280,8 +305,20 @@ export function useErector() {
     initSimulationState: (jointId: string, type: Parameters<typeof simulation.initSimulationState>[1]) =>
       simulation.initSimulationState(jointId, type),
     setSimulationAngle: (jointId: string, angle: number) => simulation.setSimulationAngle(jointId, angle),
-    setSpinAngle: (jointId: string, spinAngle: number) => simulation.setSpinAngle(jointId, spinAngle),
-    setOrbitAngle: (jointId: string, orbitAngle: number) => simulation.setOrbitAngle(jointId, orbitAngle),
+    setSpinAngle: (jointId: string, spinAngle: number) => {
+      simulation.setSpinAngle(jointId, spinAngle)
+      for (const coJointId of findCoAxisJointIds(jointId)) {
+        simulation.initSimulationState(coJointId, 'free_rotation')
+        simulation.setSpinAngle(coJointId, spinAngle)
+      }
+    },
+    setOrbitAngle: (jointId: string, orbitAngle: number) => {
+      simulation.setOrbitAngle(jointId, orbitAngle)
+      for (const coJointId of findCoAxisJointIds(jointId)) {
+        simulation.initSimulationState(coJointId, 'free_rotation')
+        simulation.setOrbitAngle(coJointId, orbitAngle)
+      }
+    },
     setAttached: (jointId: string, attached: boolean) => simulation.setAttached(jointId, attached),
     resetSimulationStates: () => simulation.resetSimulationStates(),
 
