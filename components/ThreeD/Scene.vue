@@ -173,7 +173,17 @@ const setupScene = () => {
   controls.minDistance = 0.1
   controls.maxDistance = 100
   controls.maxPolarAngle = Math.PI
-  controls.addEventListener('start', () => bottomSheet.onSceneDragStart())
+  controls.addEventListener('start', () => {
+    bottomSheet.onSceneDragStart()
+    jointControls.gizmoGroup.visible = false
+    unifiedPipeControls.controlGroup.visible = false
+    simulationControls.gizmoGroup.visible = false
+  })
+  controls.addEventListener('end', () => {
+    jointControls.gizmoGroup.visible = true
+    unifiedPipeControls.controlGroup.visible = true
+    simulationControls.gizmoGroup.visible = true
+  })
   controls.addEventListener('change', () => three.updateOrbitTarget(controls.target))
 
   jointControls = new JointControls(camera, renderer.domElement)
@@ -265,8 +275,15 @@ const handleResize = () => {
 
 let resizeObserver: ResizeObserver | null = null
 
+function onKeyDown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    objectSelection.select('')
+  }
+}
+
 onMounted(() => {
   setupScene()
+  window.addEventListener('keydown', onKeyDown)
   // ResizeObserver fires after layout is complete, so dimensions are accurate even on
   // mobile orientation changes (window.resize can fire before layout updates finish).
   resizeObserver = new ResizeObserver(handleResize)
@@ -274,6 +291,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeyDown)
   resizeObserver?.disconnect()
   resizeObserver = null
   if (jointControls) jointControls.dispose()
