@@ -232,7 +232,7 @@ export const useErectorScene = defineStore('erectorScene', {
         if (movableDef?.type !== 'free_rotation') return connRotation
         const nonClampedIdx = 1 - (joint.clampedHoleIndex ?? 0)
         if (holeId === nonClampedIdx) {
-          return connRotation + radiansToDegrees(simState.orbitAngle)
+          return connRotation - radiansToDegrees(simState.orbitAngle)
         }
         return connRotation
       }
