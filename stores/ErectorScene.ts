@@ -1,22 +1,12 @@
 import { defineStore } from 'pinia'
 import { Euler, Mesh, Quaternion, Vector3, MeshPhongMaterial, Object3D, BufferGeometry, ArrowHelper } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/Addons.js'
-import type { ErectorComponent, ErectorJoint, ErectorJointHole, JointMovableDefinition } from '~/types/erector_component'
+import type { ErectorJoint, ErectorJointHole } from '~/types/erector_component'
 import { genPipe } from '~/utils/Erector/pipe'
 import { degreesToRadians, radiansToDegrees, roundAngleDegrees } from '~/utils/angleUtils'
 import { useErectorGraph, clampMidwayPosition, type PipeJointRelationship } from '~/stores/ErectorGraph'
 import { useErectorSimulation } from '~/stores/ErectorSimulation'
-import erectorComponentDefinitionRaw from '~/data/erector_component.json'
-
-const erectorComponentDef = erectorComponentDefinitionRaw as unknown as ErectorComponent
-
-function getMovableDefForJoint(name: string): JointMovableDefinition | undefined {
-  const allTypes = [
-    ...erectorComponentDef.pla_joints.categories.flatMap(c => c.types),
-    ...erectorComponentDef.metal_joints,
-  ]
-  return (allTypes.find(t => t.name === name) as any)?.movable
-}
+import { getMovableDefForJoint } from '~/utils/Erector/erectorComponentDefinition'
 
 function computePivotHoles(joint: ErectorJoint, pivotCenter: [number, number, number], pivotAxis: [number, number, number], rotatingHoles: number[], angle: number): ErectorJointHole[] {
   const center = new Vector3(...pivotCenter)
@@ -242,7 +232,7 @@ export const useErectorScene = defineStore('erectorScene', {
         if (movableDef?.type !== 'free_rotation') return connRotation
         const nonClampedIdx = 1 - (joint.clampedHoleIndex ?? 0)
         if (holeId === nonClampedIdx) {
-          return connRotation + radiansToDegrees(simState.orbitAngle)
+          return connRotation - radiansToDegrees(simState.orbitAngle)
         }
         return connRotation
       }
@@ -296,6 +286,37 @@ export const useErectorScene = defineStore('erectorScene', {
         const movableDef = getMovableDefForJoint(joint.name)
         if (movableDef?.type !== 'detachable') return false
         return holeId === movableDef.detachableHoleIndex
+      }
+
+      function isCoAxisSpinWaiting(jointId: string, currentPipeId: string): boolean {
+        if (!isSimMode) return false
+        const joint = joints.find(j => j.id === jointId)
+        if (!joint) return false
+        const movableDef = getMovableDefForJoint(joint.name)
+        if (movableDef?.type !== 'free_rotation') return false
+        const clampedIdx = joint.clampedHoleIndex ?? 0
+        const nonClampedIdx = 1 - clampedIdx
+        const isCurrentPipeClamped = pipes.some(p =>
+          p.id === currentPipeId &&
+          p.connections.midway.some(c => c.jointId === jointId && c.holeId === clampedIdx)
+        )
+        if (!isCurrentPipeClamped) return false
+        const nonClampedPipe = pipes.find(p =>
+          p.connections.midway.some(c => c.jointId === jointId && c.holeId === nonClampedIdx)
+        )
+        if (!nonClampedPipe) return false
+        for (const conn of nonClampedPipe.connections.midway) {
+          if (conn.jointId === jointId) continue
+          const otherJoint = joints.find(j => j.id === conn.jointId)
+          if (!otherJoint) continue
+          const otherMovableDef = getMovableDefForJoint(otherJoint.name)
+          if (otherMovableDef?.type !== 'free_rotation') continue
+          const otherNonClampedIdx = 1 - (otherJoint.clampedHoleIndex ?? 0)
+          if (conn.holeId !== otherNonClampedIdx) continue
+          const otherSimState = simulation.simulationStates[otherJoint.id]
+          if (otherSimState?.type === 'free_rotation' && Math.abs(otherSimState.spinAngle) > 1e-10) return true
+        }
+        return false
       }
 
       const updatePipeJointRelationshipMethod = this.updatePipeJointRelationship
@@ -456,7 +477,7 @@ export const useErectorScene = defineStore('erectorScene', {
                 }
               })
               const hole = getEffectiveHoles(joint)[conn.holeId]
-              if (!updated.includes(conn.jointId)) {
+              if (!updated.includes(conn.jointId) && !isCoAxisSpinWaiting(conn.jointId, pipe.id)) {
                 updated.push(conn.jointId)
                 updatePipeJointRelationship(pipe.id, conn.jointId, conn.holeId, 'midway', 'p2j')
                 if (hole && hole.type === 'THROUGH') {
