@@ -433,7 +433,7 @@ export const useErectorValidation = defineStore('erectorValidation', {
       errors.forEach(error => {
         error.rotationFixes = computeRotationFixes(error, graph.pipes, scene.instances)
         error.rightFix = computeRightFix(error, graph.pipes, scene.instances)
-        error.lengthFixes = computeLengthFixes(error, graph.pipes, scene.instances, scene.pipeJointRelationships)
+        error.lengthFixes = computeLengthFixes(error, graph.pipes, scene.instances, scene.getPipeJointRelationshipArray())
       })
 
       this.invalidConnections = errors

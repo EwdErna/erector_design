@@ -340,10 +340,12 @@ const connMidJoint = computed(() => (i: number) => {
   return erector.joints.find(j => j.id === conn.jointId)
 })
 
-const pipeRelationships = computed(() => {
-  if (!selectedPipe.value) return []
-  return erector.pipeJointRelationships.filter(rel => rel.pipeId === selectedPipe.value!.id)
-})
+const pipeRelationships = ref<import('~/stores/ErectorGraph').PipeJointRelationship[]>([])
+watch(selectedPipe, (pipe) => {
+  if (!pipe) { pipeRelationships.value = []; return }
+  pipeRelationships.value = erector.getPipeJointRelationshipArray()
+    .filter(rel => rel.pipeId === pipe.id)
+}, { immediate: true })
 
 // connectionの値を同期
 watch([connStart, connEnd, connMidway], () => {
