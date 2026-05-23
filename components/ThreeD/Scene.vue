@@ -225,8 +225,8 @@ const animate = (scene: Scene) => {
       const rootPipeObject = erector.instanceObjectMap.get(rootPipeId)
       return {
         id: rootPipeId,
-        position: rootPipeObject?.position.clone() ?? new Vector3(),
-        rotation: rootPipeObject?.quaternion.clone() ?? new Quaternion()
+        position: rootPipeObject?.position ?? new Vector3(),
+        rotation: rootPipeObject?.quaternion ?? new Quaternion()
       }
     }))
   }

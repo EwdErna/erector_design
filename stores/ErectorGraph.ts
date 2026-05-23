@@ -72,7 +72,10 @@ export const useErectorGraph = defineStore('erectorGraph', {
       const existingPipeIds = new Set(this.pipes.map(pipe => pipe.id))
       const validRootPipeIds = this.rootPipeIds.filter(id => existingPipeIds.has(id))
       const autoRoots = this.getDefaultRootPipeIds().filter(id => !validRootPipeIds.includes(id))
-      this.rootPipeIds = [...validRootPipeIds, ...autoRoots]
+      const newRootIds = [...validRootPipeIds, ...autoRoots]
+      // Skip state update (and Vue reactivity) when roots haven't changed
+      if (newRootIds.length === this.rootPipeIds.length && newRootIds.every((id, i) => id === this.rootPipeIds[i])) return
+      this.rootPipeIds = newRootIds
     },
 
     buildConnectedComponents(): string[][] {

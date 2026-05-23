@@ -239,8 +239,6 @@ export function useErector() {
 
     // --- Scene state ---
     get instances() { return scene.instances },
-    get renderCount() { return scene.renderCount },
-    get pipeJointRelationships() { return scene.pipeJointRelationships },
     get debugArrows() { return scene.debugArrows },
     get instanceObjectMap() { return scene.instanceObjectMap },
     get rootPipeObjects() { return scene.rootPipeObjects },
@@ -283,6 +281,7 @@ export function useErector() {
     getObjectRotation: (id: string) => scene.getObjectRotation(id),
     getPipeJointRelationship: (pipeId: string, jointId: string, holeId: number, connectionType: 'start' | 'end' | 'midway') =>
       scene.getPipeJointRelationship(pipeId, jointId, holeId, connectionType),
+    getPipeJointRelationshipArray: () => scene.getPipeJointRelationshipArray(),
 
     // --- Simulation operations (pass-through) ---
     toggleSimulationMode: () => {
