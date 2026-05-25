@@ -1,15 +1,8 @@
 import { BufferGeometry, Camera, Controls, Group, Line, Mesh, MeshBasicMaterial, Object3D, Plane, Raycaster, SphereGeometry, TorusGeometry, Vector2, Vector3, CylinderGeometry, BoxGeometry } from "three";
 import type { ErectorPipe, ErectorPipeConnection, ErectorJoint } from "~/types/erector_component";
 import { radiansToDegrees, normalizeAngle180 } from "~/utils/angleUtils";
-
-/**
- * Type guard to check if an object is a Mesh with MeshBasicMaterial
- */
-function isMeshWithBasicMaterial(obj: any): obj is Mesh<BufferGeometry, MeshBasicMaterial> {
-  return obj instanceof Mesh &&
-    obj.material instanceof MeshBasicMaterial &&
-    !Array.isArray(obj.material);
-}
+import { isMeshWithBasicMaterial, GizmoHoverManager, GIZMO_VISUAL } from "./ControlsShared";
+import type { HoverCurveRing, HoverCurveSegment, HoverCurvePoint } from "./ControlsShared";
 
 /**
  * Coordinate system manager for pipe controls
@@ -130,6 +123,9 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
   private cachedWorldNormal: Vector3 | null = null
   private gizmoWorldPosAtStart: Vector3 | null = null
 
+  // ホバー状態管理
+  private hoverManager = new GizmoHoverManager()
+
   constructor(camera: Camera, domElement: HTMLElement) {
     super(camera, domElement);
     this.camera = camera
@@ -170,19 +166,29 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
     // End gizmo for length control
     const endGizmo = new Mesh(
       new CylinderGeometry(0.08, 0.08, 0.005, 16),
-      new MeshBasicMaterial({ color: 0x0000ff, transparent: true, opacity: 0.6 })
+      new MeshBasicMaterial({ color: 0x0000ff, transparent: true, opacity: GIZMO_VISUAL.disk.thin.opacity })
     )
     endGizmo.rotateX(Math.PI / 2)
     endGizmo.position.set(0, 0, pipeLength)
     endGizmo.name = `${pipe.id}-end-length-control`
 
+    // 断面中心 = ディスクの外縁円（ring として扱う）
+    // end のトーラス(r=0.05)とは半径が異なるため、距離競合で自然に分離される
+    const hoverCurveDisk: HoverCurveRing = {
+      type: 'ring',
+      center: new Vector3(0, 0, pipeLength),
+      radius: 0.08,                    // CylinderGeometry の radius と一致
+      normal: new Vector3(0, 0, 1),    // パイプ軸方向（controlGroup local Z）
+    }
     const lengthData: LengthGizmoData = {
       type: 'pipe-length-control',
       pipe: pipe.id,
       isEnd: true,
       length: pipeLength
     }
-    endGizmo.userData = lengthData
+    endGizmo.userData = { ...lengthData, hoverCurve: hoverCurveDisk }
+    // 初期ビジュアル: thin スケール（XZ がディスク面、Y が軸）
+    endGizmo.scale.set(GIZMO_VISUAL.disk.thin.scaleXZ, 1, GIZMO_VISUAL.disk.thin.scaleXZ)
 
     this.controlGroup.add(endGizmo)
     this.gizmos.push(endGizmo)
@@ -234,11 +240,11 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
 
     // Create the gizmo mesh - smaller than length control to avoid overlap
     const gizmoMesh = new Mesh(
-      new TorusGeometry(0.05, 0.008, 8, 16), // Smaller than length control
+      new TorusGeometry(0.05, GIZMO_VISUAL.torus.thin.tube, 8, 16),
       new MeshBasicMaterial({
         color: this.getConnectionColor(connectionType),
         transparent: true,
-        opacity: 0.7
+        opacity: GIZMO_VISUAL.torus.thin.opacity,
       })
     )
 
@@ -261,6 +267,14 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
     const connectionId = `${this.target.pipe.id}-${connectionType}${midwayIndex !== undefined ? `-${midwayIndex}` : ''}`
     gizmoMesh.name = `${connectionId}-rotation-control`
 
+    // 断面中心 = トーラス中心円（controlGroup ローカルで Z 軸が法線）
+    const hoverCurveTorus: HoverCurveRing = {
+      type: 'ring',
+      center: gizmoMesh.position.clone(), // position 確定後（offset 適用済み）
+      radius: 0.05,
+      normal: new Vector3(0, 0, 1),
+    }
+
     const connectionData: ConnectionGizmoData = {
       type: 'connection-rotation-control',
       connectionId,
@@ -273,7 +287,7 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
       rotation: connection.rotation || 0
     }
 
-    gizmoMesh.userData = connectionData
+    gizmoMesh.userData = { ...connectionData, hoverCurve: hoverCurveTorus }
 
     this.controlGroup.add(gizmoMesh)
     this.gizmos.push(gizmoMesh)
@@ -298,7 +312,7 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
       new MeshBasicMaterial({
         color: 0x00ffff, // Cyan color for position control
         transparent: true,
-        opacity: 0.5
+        opacity: GIZMO_VISUAL.box.thin.opacity,
       })
     )
 
@@ -311,6 +325,14 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
 
     positionGizmo.name = `${connectionId}-position-control`
 
+    // 断面中心 = ボックス長軸（Z 軸方向）の軸線分
+    // ボックスは x=0.04, y=0, z=pipeLength/2 を中心に pipeLength 分 Z に延びる
+    const hoverCurveBox: HoverCurveSegment = {
+      type: 'segment',
+      start: new Vector3(0.04, 0, 0),
+      end:   new Vector3(0.04, 0, this.target.pipe.length),
+    }
+
     const positionData: PositionGizmoData = {
       type: 'connection-position-control',
       connectionId,
@@ -322,7 +344,9 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
       position: connection.position
     }
 
-    positionGizmo.userData = positionData
+    positionGizmo.userData = { ...positionData, hoverCurve: hoverCurveBox }
+    // 初期ビジュアル: thin スケール（XY が断面、Z がパイプ軸）
+    positionGizmo.scale.set(GIZMO_VISUAL.box.thin.scaleXY, GIZMO_VISUAL.box.thin.scaleXY, 1)
 
     this.controlGroup.add(positionGizmo)
     this.gizmos.push(positionGizmo)
@@ -339,6 +363,8 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
 
   clear() {
     this.disposeDebugObjects()
+    // 内部参照だけリセット（geometry は clear/dispose ループで処理するため触らない）
+    this.hoverManager.reset()
     this.controlGroup.clear()
     this.debugObjects.clear()
     this.gizmos.forEach(g => g.clear())
@@ -458,7 +484,17 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
   }
 
   onMouseMove(event: MouseEvent) {
-    if (!this.target || !this.isDragging || !this.dragging || !this.draggingPlane || !this.coordinateManager) return;
+    if (!this.target) return;
+
+    // ドラッグ中でなければホバー判定のみ実行
+    if (!this.isDragging) {
+      this.hoverManager.update(
+        this.gizmos, event, this.camera, this.domElement, this.controlGroup,
+      )
+      return;
+    }
+
+    if (!this.dragging || !this.draggingPlane || !this.coordinateManager) return;
 
     const currentIntersection = this.getCurrentMouseIntersection(event);
     if (!currentIntersection) return;
@@ -611,10 +647,9 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
           (gizmoData as ConnectionGizmoData).rotation = this.currentValue;
         }
 
-        if (isMeshWithBasicMaterial(this.dragging)) {
-          this.dragging.material.opacity = 0.6;
-        }
         this.dragging = null;
+        // ドラッグ終了後は全ギズモを thin に戻す（次の mousemove で再評価）
+        this.hoverManager.clearAll(this.gizmos);
       }
 
       this.disposeDebugObjects();
@@ -644,19 +679,30 @@ export class PipeControls extends Controls<{ change: { value: boolean }, 'draggi
       const data = gizmo.userData as GizmoData;
       if (data.type === 'pipe-length-control' && (data as LengthGizmoData).isEnd) {
         gizmo.position.setZ(newLength);
+        // hoverCurve の中心 Z を同期（ring の center）
+        if (gizmo.userData.hoverCurve?.type === 'ring') {
+          gizmo.userData.hoverCurve.center.z = newLength;
+        }
       } else if (data.type === 'connection-rotation-control') {
         const connectionData = data as ConnectionGizmoData;
         if (connectionData.connectionType === 'end') {
           gizmo.position.setZ(newLength);
+          // hoverCurve の中心 Z を同期
+          if (gizmo.userData.hoverCurve?.type === 'ring') {
+            gizmo.userData.hoverCurve.center.z = newLength;
+          }
         }
       } else if (data.type === 'connection-position-control') {
         // Update position control gizmo length to match pipe length
-        const positionData = data as PositionGizmoData;
         if (gizmo.geometry instanceof BoxGeometry) {
           gizmo.geometry.dispose();
           gizmo.geometry = new BoxGeometry(0.01, 0.01, newLength); // Full pipe length
         }
         gizmo.position.z = newLength / 2;
+        // hoverCurve の終端 Z を同期（segment の end）
+        if (gizmo.userData.hoverCurve?.type === 'segment') {
+          gizmo.userData.hoverCurve.end.z = newLength;
+        }
       }
     });
   }

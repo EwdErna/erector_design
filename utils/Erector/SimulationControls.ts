@@ -4,7 +4,8 @@ import {
 } from 'three'
 import type { ErectorJoint, JointMovableDefinition } from '~/types/erector_component'
 import { radiansToDegrees } from '~/utils/angleUtils'
-import { calculateSignedAngle, disposeDebugObjects, isMeshWithBasicMaterial } from './ControlsShared'
+import { calculateSignedAngle, disposeDebugObjects, isMeshWithBasicMaterial, GizmoHoverManager, GIZMO_VISUAL } from './ControlsShared'
+import type { HoverCurveRing } from './ControlsShared'
 
 type SimGizmoUserData = {
   role: 'pivot' | 'spin' | 'orbit'
@@ -12,6 +13,7 @@ type SimGizmoUserData = {
   axisWorld: Vector3
   centerWorld: Vector3
   startAngle: number
+  hoverCurve?: HoverCurveRing
 }
 
 export class SimulationControls extends Controls<{
@@ -25,6 +27,8 @@ export class SimulationControls extends Controls<{
 
   camera: Camera
   override domElement: HTMLElement
+
+  private hoverManager = new GizmoHoverManager()
 
   private isDragging = false
   private dragging: Mesh<BufferGeometry, MeshBasicMaterial> | null = null
@@ -68,6 +72,15 @@ export class SimulationControls extends Controls<{
       const gizmo = this.makeArc(0xffa500, 0.06)
       gizmo.position.copy(pivotCenterWorld)
       gizmo.quaternion.setFromUnitVectors(new Vector3(0, 0, 1), pivotAxisWorld)
+
+      // gizmoGroup は origin (transform なし) なので position = world座標
+      // sampleHoverCurveWorld は group.localToWorld を呼ぶが identity なのでそのまま使える
+      const hoverCurvePivot: HoverCurveRing = {
+        type: 'ring',
+        center: pivotCenterWorld.clone(),  // gizmoGroup local = world
+        radius: 0.06,
+        normal: pivotAxisWorld.clone(),    // gizmoGroup local = world
+      }
       const userData: SimGizmoUserData = {
         role: 'pivot',
         jointId: joint.id,
@@ -75,7 +88,7 @@ export class SimulationControls extends Controls<{
         centerWorld: pivotCenterWorld,
         startAngle: 0,
       }
-      gizmo.userData = userData
+      gizmo.userData = { ...userData, hoverCurve: hoverCurvePivot }
       this.gizmoGroup.add(gizmo)
       this.gizmos.push(gizmo)
     }
@@ -94,12 +107,19 @@ export class SimulationControls extends Controls<{
       const spinGizmo = this.makeArc(0x00e5ff, 0.06)
       spinGizmo.position.copy(holeCenterWorld)
       spinGizmo.quaternion.copy(axisQuat)
+      const hoverCurveSpin: HoverCurveRing = {
+        type: 'ring',
+        center: holeCenterWorld.clone(),
+        radius: 0.06,
+        normal: holeAxisWorld.clone(),
+      }
       spinGizmo.userData = {
         role: 'spin',
         jointId: joint.id,
         axisWorld: holeAxisWorld,
         centerWorld: holeCenterWorld,
         startAngle: 0,
+        hoverCurve: hoverCurveSpin,
       } satisfies SimGizmoUserData
       this.gizmoGroup.add(spinGizmo)
       this.gizmos.push(spinGizmo)
@@ -111,12 +131,19 @@ export class SimulationControls extends Controls<{
       const orbitGizmo = this.makeArc(0xff8c00, orbitRadius)
       orbitGizmo.position.copy(holeCenterWorld)
       orbitGizmo.quaternion.copy(axisQuat)
+      const hoverCurveOrbit: HoverCurveRing = {
+        type: 'ring',
+        center: holeCenterWorld.clone(),
+        radius: orbitRadius,             // 二穴間距離（可変）
+        normal: holeAxisWorld.clone(),
+      }
       orbitGizmo.userData = {
         role: 'orbit',
         jointId: joint.id,
         axisWorld: holeAxisWorld,
         centerWorld: holeCenterWorld,
         startAngle: 0,
+        hoverCurve: hoverCurveOrbit,
       } satisfies SimGizmoUserData
       this.gizmoGroup.add(orbitGizmo)
       this.gizmos.push(orbitGizmo)
@@ -124,13 +151,15 @@ export class SimulationControls extends Controls<{
   }
 
   private makeArc(color: number, radius: number): Mesh<BufferGeometry, MeshBasicMaterial> {
-    const geo = new TorusGeometry(radius, 0.008, 8, 32)
-    const mat = new MeshBasicMaterial({ color, transparent: true, opacity: 0.7, depthTest: false })
+    const geo = new TorusGeometry(radius, GIZMO_VISUAL.torus.thin.tube, 8, 32)
+    const mat = new MeshBasicMaterial({ color, transparent: true, opacity: GIZMO_VISUAL.torus.thin.opacity, depthTest: false })
     return new Mesh(geo, mat)
   }
 
   clear() {
     disposeDebugObjects(this.debugObjects)
+    // geometry を dispose する前に内部参照だけリセット
+    this.hoverManager.reset()
     this.gizmos.forEach(g => {
       g.geometry.dispose();
       (g.material as MeshBasicMaterial).dispose()
@@ -160,7 +189,14 @@ export class SimulationControls extends Controls<{
   private onTouchEnd(_e: TouchEvent) { this.endDrag() }
 
   onMouseDown(event: MouseEvent) { this.startFromClient(event.clientX, event.clientY) }
-  onMouseMove(event: MouseEvent) { this.moveFromClient(event.clientX, event.clientY) }
+  onMouseMove(event: MouseEvent) {
+    if (!this.isDragging) {
+      // ドラッグ中でなければホバー判定のみ実行
+      this.hoverManager.update(this.gizmos, event, this.camera, this.domElement, this.gizmoGroup)
+      return
+    }
+    this.moveFromClient(event.clientX, event.clientY)
+  }
   onMouseUp(_event: MouseEvent) { this.endDrag() }
 
   // ---- interaction ----
@@ -238,9 +274,10 @@ export class SimulationControls extends Controls<{
   private endDrag() {
     if (!this.isDragging) return
     if (this.dragging) {
-      this.dragging.material.opacity = 0.7
       this.dragging = null
     }
+    // ドラッグ終了後は全ギズモを thin に戻す（次の mousemove で再評価）
+    this.hoverManager.clearAll(this.gizmos)
     this.isDragging = false
     this.draggingPlane = null
     this.dragStart = null
