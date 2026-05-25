@@ -2,7 +2,8 @@ import { BufferGeometry, Camera, Controls, Euler, Group, Line, Mesh, MeshBasicMa
 import { definitions } from "@/utils/Erector/erectorComponentDefinition";
 import type { ErectorJoint, ErectorPipeConnection, ErectorPipe } from "~/types/erector_component";
 import { radiansToDegrees, normalizeAngle180 } from "~/utils/angleUtils";
-import { isMeshWithBasicMaterial, CoordinateManager, calculateSignedAngle, applyRelationshipDirection, disposeDebugObjects, updateLineGeometry } from "./ControlsShared";
+import { isMeshWithBasicMaterial, CoordinateManager, calculateSignedAngle, applyRelationshipDirection, disposeDebugObjects, updateLineGeometry, GizmoHoverManager, GIZMO_VISUAL } from "./ControlsShared";
+import type { HoverCurveRing, HoverCurveSegment, HoverCurvePoint } from "./ControlsShared";
 
 export class JointControls extends Controls<{ change: { value: boolean }, 'dragging-changed': { value: boolean } }> {
   gizmoGroup: Group = new Group()
@@ -27,6 +28,9 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
 
   // Coordinate and calculation helpers
   private coordinateManager: CoordinateManager | null = null;
+
+  // ホバー状態管理
+  private hoverManager = new GizmoHoverManager()
 
   constructor(camera: Camera, domElement: HTMLElement) {
     super(camera, domElement);
@@ -68,7 +72,10 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
         // j.startからtorusの位置を計算
         position.copy(j.offset).multiplyScalar(4) //ちょっとだけ離す
       }
-      const gizmoMesh = new Mesh(new TorusGeometry(0.05, 0.01, 8, 16), new MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.5 }))
+      const gizmoMesh = new Mesh(
+        new TorusGeometry(0.05, GIZMO_VISUAL.torus.thin.tube, 8, 16),
+        new MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: GIZMO_VISUAL.torus.thin.opacity })
+      )
       gizmoMesh.position.copy(position)
       gizmoMesh.quaternion.copy(rotation)
       gizmoMesh.name = `${joint.name}-hole${i}-control`
@@ -93,12 +100,19 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
         }
       }
 
+      const hoverCurve: HoverCurveRing = {
+        type: 'ring',
+        center: position.clone(),
+        radius: 0.05,
+        normal: new Vector3(0, 0, 1).applyQuaternion(rotation),
+      }
       gizmoMesh.userData = {
         joint: joint.name,
         index: i,
         type: 'joint-control',
         normal: new Vector3(0, 0, 1).applyQuaternion(j.dir).toArray(),
-        rotation: targetConnection ? targetConnection.rotation : 0
+        rotation: targetConnection ? targetConnection.rotation : 0,
+        hoverCurve,
       }
 
       this.gizmoGroup.add(gizmoMesh)
@@ -113,6 +127,9 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
   clear() {
     // Properly dispose of debug objects before clearing
     disposeDebugObjects(this.debugObjects)
+
+    // 内部参照だけリセット（geometry は clear/dispose ループで処理するため触らない）
+    this.hoverManager.reset()
 
     this.gizmoGroup.clear()
     this.debugObjects.clear()
@@ -252,7 +269,18 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
   }
 
   onMouseMove(event: MouseEvent) {
-    if (!this.target || !this.isDragging || !this.dragging || !this.draggingPlane || !this.coordinateManager) return;
+    if (!this.target) return;
+
+    // ドラッグ中でなければホバー判定のみ実行
+    if (!this.isDragging) {
+      this.hoverManager.update(
+        [...this.gizmos, ...this.positionSliders],
+        event, this.camera, this.domElement, this.gizmoGroup,
+      )
+      return;
+    }
+
+    if (!this.dragging || !this.draggingPlane || !this.coordinateManager) return;
 
     const currentIntersection = this.getCurrentMouseIntersection(event);
     if (!currentIntersection) return;
@@ -454,11 +482,9 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
           this.dragging.userData.rotation = this.currentAngle;
         }
 
-        // Type guard to safely update material opacity
-        if (isMeshWithBasicMaterial(this.dragging)) {
-          this.dragging.material.opacity = 0.5;
-        }
         this.dragging = null;
+        // ドラッグ終了後は全ギズモを thin に戻す（次の mousemove で再評価）
+        this.hoverManager.clearAll([...this.gizmos, ...this.positionSliders]);
       }
 
       // Properly dispose of debug objects before clearing
@@ -705,7 +731,7 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
     const sliderMaterial = new MeshBasicMaterial({
       color: 0x00ffff, // Cyan for position control
       transparent: true,
-      opacity: 0.6
+      opacity: GIZMO_VISUAL.cylinder.thin.opacity,
     });
 
     const sliderMesh = new Mesh(sliderGeometry, sliderMaterial);
@@ -735,6 +761,14 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
 
     sliderMesh.name = `${this.target.joint.name}-hole${holeIndex}-position-slider`;
 
+    // 断面中心 = CylinderGeometry の軸線分（pipeDirection 方向）
+    const halfLen = sliderLength / 2
+    const hoverCurveSlider: HoverCurveSegment = {
+      type: 'segment',
+      start: sliderMesh.position.clone().addScaledVector(pipeDirection, -halfLen),
+      end:   sliderMesh.position.clone().addScaledVector(pipeDirection,  halfLen),
+    }
+
     sliderMesh.userData = {
       joint: this.target.joint.name,
       index: holeIndex,
@@ -744,8 +778,12 @@ export class JointControls extends Controls<{ change: { value: boolean }, 'dragg
       pipeLength: pipe.length,
       currentPosition: connection.position,
       pipeDirection: pipeDirection.toArray(),
-      pipeObject: null // Will be set after finding the pipe object
+      pipeObject: null, // Will be set after finding the pipe object
+      hoverCurve: hoverCurveSlider,
     };
+
+    // 初期ビジュアル: thin スケール（Y 軸が軸方向なので XZ のみ縮小）
+    sliderMesh.scale.set(GIZMO_VISUAL.cylinder.thin.radiusScale, 1, GIZMO_VISUAL.cylinder.thin.radiusScale);
 
     // Find and store reference to the pipe object for direct coordinate conversion
     const connections = useErector();
