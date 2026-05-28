@@ -29,6 +29,9 @@ type InvalidConnectionForViz = {
   right: { actual: Vector3; expected: Vector3 }
 }
 
+const _gltfLoader = new GLTFLoader()
+const _gltfCache = new Map<string, Object3D>()
+
 // Non-reactive module-scope store for pipeJointRelationships.
 // Kept outside Pinia state to prevent Vue reactivity from firing every frame
 // when calculateWorldPosition() rewrites all relationships.
@@ -64,11 +67,12 @@ export const useErectorScene = defineStore('erectorScene', {
       const three = useThree()
       if (!three.scene) return
       if (this.instances.some(i => i.id === id)) return
-      const loader = new GLTFLoader()
       const { x, y, z } = three.orbitTarget
       const spawnPos = new Vector3(x, y, z)
-      loader.load(`/models/${category}/erector_component-${name}.gltf`, (gltf) => {
-        const model = gltf.scene
+      const url = `/models/${category}/erector_component-${name}.gltf`
+
+      const applyModel = (source: Object3D) => {
+        const model = source.clone(true)
         model.traverse((child) => {
           if (child instanceof Mesh) {
             child.material = new MeshPhongMaterial()
@@ -81,7 +85,17 @@ export const useErectorScene = defineStore('erectorScene', {
         if (three.scene) {
           three.scene.add(model)
         }
-      })
+      }
+
+      const cached = _gltfCache.get(url)
+      if (cached) {
+        applyModel(cached)
+      } else {
+        _gltfLoader.load(url, (gltf) => {
+          _gltfCache.set(url, gltf.scene)
+          applyModel(gltf.scene)
+        })
+      }
     },
 
     removeObject(id: string) {

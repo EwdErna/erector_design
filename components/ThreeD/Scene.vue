@@ -9,7 +9,6 @@
 
 <script lang="ts" setup>
 import { AmbientLight, AxesHelper, DirectionalLight, GridHelper, PerspectiveCamera, Scene, WebGLRenderer, Color, Vector2, Raycaster, Quaternion, Vector3, Object3D, Mesh } from 'three';
-import { GLTFLoader } from 'three/examples/jsm/Addons.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { ErectorPipe } from '~/types/erector_component';
 import { JointControls } from '~/utils/Erector/JointControls';
@@ -222,7 +221,6 @@ const setupScene = () => {
   scene.add(ambientLight)
   const directionalLight = new DirectionalLight(0xffffff)
   scene.add(directionalLight)
-  const gltfLoader = new GLTFLoader()
   animate(scene)
 }
 
