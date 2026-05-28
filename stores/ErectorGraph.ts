@@ -264,6 +264,16 @@ export const useErectorGraph = defineStore('erectorGraph', {
       this.joints = this.joints.filter(j => j.id !== jointId)
     },
 
+    restoreState(pipes: ErectorPipe[], jointUpdates: { id: string, clampedHoleIndex?: number }[], rootPipeIds: string[]) {
+      this.pipes = pipes
+      this.rootPipeIds = rootPipeIds
+      for (const ju of jointUpdates) {
+        const j = this.joints.find(j => j.id === ju.id)
+        if (!j) continue
+        j.clampedHoleIndex = ju.clampedHoleIndex
+      }
+    },
+
     clear() {
       this.pipes = []
       this.joints = []

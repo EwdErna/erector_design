@@ -46,8 +46,13 @@ export const useErectorScene = defineStore('erectorScene', {
     instances: [] as { id: string, obj?: Object3D, movablePart?: Object3D }[],
     debugArrows: [] as ArrowHelper[],
     savedRootTransforms: [] as { id: string, position: Vector3, rotation: Quaternion }[],
+    isDirty: true,
   }),
   actions: {
+    markDirty() {
+      this.isDirty = true
+    },
+
     addPipeObject(id: string, diameter: number, length: number) {
       const three = useThree()
       if (!three.scene) return
@@ -61,6 +66,7 @@ export const useErectorScene = defineStore('erectorScene', {
       pipeObject.position.set(x, y, z)
       this.instances.push({ id, obj: pipeObject })
       three.scene.add(pipeObject)
+      this.isDirty = true
     },
 
     addJointObject(id: string, name: string, category: string, holes: ErectorJointHole[]) {
@@ -82,6 +88,7 @@ export const useErectorScene = defineStore('erectorScene', {
         model.position.copy(spawnPos)
         const movablePart = model.getObjectByName('Move') ?? undefined
         this.instances.push({ id, obj: model, movablePart })
+        this.isDirty = true
         if (three.scene) {
           three.scene.add(model)
         }
@@ -119,6 +126,7 @@ export const useErectorScene = defineStore('erectorScene', {
           })
         }
         this.instances.splice(instanceIndex, 1)
+        this.isDirty = true
       }
     },
 
@@ -132,12 +140,14 @@ export const useErectorScene = defineStore('erectorScene', {
           v.geometry.needsUpdate = true
         }
       })
+      this.isDirty = true
     },
 
     updateObjectPosition(id: string, position: [number, number, number]) {
       const instance = this.instances.find(i => i.id === id)
       if (!instance?.obj) return
       instance.obj.position.set(...position)
+      this.isDirty = true
     },
 
     updateObjectRotation(id: string, rotation: [number, number, number]) {
@@ -148,6 +158,7 @@ export const useErectorScene = defineStore('erectorScene', {
         degreesToRadians(rotation[1]),
         degreesToRadians(rotation[2])
       )
+      this.isDirty = true
     },
 
     getObjectPosition(id: string): [number, number, number] | undefined {
@@ -168,6 +179,7 @@ export const useErectorScene = defineStore('erectorScene', {
 
     updatePipeJointRelationship(pipeId: string, jointId: string, holeId: number, connectionType: 'start' | 'end' | 'midway', relationshipType: 'j2p' | 'p2j') {
       _pjRelMap.set(pjRelKey(pipeId, jointId, holeId, connectionType), { pipeId, jointId, holeId, connectionType, relationshipType })
+      this.isDirty = true
     },
 
     getPipeJointRelationship(pipeId: string, jointId: string, holeId: number, connectionType: 'start' | 'end' | 'midway'): 'j2p' | 'p2j' | null {
@@ -180,9 +192,11 @@ export const useErectorScene = defineStore('erectorScene', {
 
     removeConnectionRelationship(pipeId: string, jointId: string, holeId: number, connectionType: 'start' | 'end' | 'midway') {
       _pjRelMap.delete(pjRelKey(pipeId, jointId, holeId, connectionType))
+      this.isDirty = true
     },
 
     calculateWorldPosition() {
+      if (!this.isDirty) return (_: transform[]) => {}
       const graph = useErectorGraph()
       const simulation = useErectorSimulation()
       const updatedSet = new Set<string>()
@@ -635,7 +649,13 @@ export const useErectorScene = defineStore('erectorScene', {
           }
           update(pipe, updatedTransform)
         }
+        this.isDirty = false
       }
+    },
+
+    clearPjRelMap() {
+      _pjRelMap.clear()
+      this.isDirty = true
     },
 
     clearDebugArrows() {
@@ -737,6 +757,7 @@ export const useErectorScene = defineStore('erectorScene', {
         obj.position.copy(saved.position)
         obj.quaternion.copy(saved.rotation)
       })
+      this.isDirty = true
     },
   },
   getters: {

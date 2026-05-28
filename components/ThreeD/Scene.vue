@@ -27,6 +27,7 @@ let controls: OrbitControls
 let jointControls: JointControls
 let unifiedPipeControls: PipeControls
 let simulationControls: SimulationControls
+let isAnyGizmoDragging = false
 const erector = useErector()
 
 const allJointTypes = [
@@ -188,6 +189,8 @@ const setupScene = () => {
   jointControls = new JointControls(camera, renderer.domElement)
   jointControls.addEventListener('dragging-changed', e => {
     controls.enabled = !e.value
+    isAnyGizmoDragging = e.value
+    if (e.value) erector.pushHistory()
   })
   scene.add(jointControls.gizmoGroup)
   scene.add(jointControls.debugObjects)
@@ -195,6 +198,8 @@ const setupScene = () => {
   unifiedPipeControls = new PipeControls(camera, renderer.domElement)
   unifiedPipeControls.addEventListener('dragging-changed', e => {
     controls.enabled = !e.value
+    isAnyGizmoDragging = e.value
+    if (e.value) erector.pushHistory()
   })
   scene.add(unifiedPipeControls.controlGroup)
   scene.add(unifiedPipeControls.debugObjects)
@@ -202,6 +207,7 @@ const setupScene = () => {
   simulationControls = new SimulationControls(camera, renderer.domElement)
   simulationControls.addEventListener('dragging-changed', e => {
     controls.enabled = !e.value
+    isAnyGizmoDragging = e.value
   })
   scene.add(simulationControls.gizmoGroup)
   scene.add(simulationControls.debugObjects)
@@ -227,6 +233,7 @@ const setupScene = () => {
 const animate = (scene: Scene) => {
   if (!scene) return;
   erector.syncRootPipeIds()
+  if (isAnyGizmoDragging) erector.markDirty()
   if (erector.rootPipeObjects.length > 0) {
     const calculatePosition = erector.calculateWorldPosition()
     calculatePosition(erector.rootPipeIds.map(rootPipeId => {
@@ -276,6 +283,19 @@ let resizeObserver: ResizeObserver | null = null
 function onKeyDown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
     objectSelection.select('')
+    return
+  }
+  if (event.ctrlKey || event.metaKey) {
+    if (event.key === 'z' && !event.shiftKey) {
+      event.preventDefault()
+      erector.undo()
+      return
+    }
+    if (event.key === 'y' || (event.key === 'z' && event.shiftKey)) {
+      event.preventDefault()
+      erector.redo()
+      return
+    }
   }
 }
 
