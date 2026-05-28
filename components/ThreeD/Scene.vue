@@ -16,6 +16,7 @@ import { PipeControls } from '~/utils/Erector/PipeControls';
 import { SimulationControls } from '~/utils/Erector/SimulationControls';
 import { definitions } from '~/utils/Erector/erectorComponentDefinition';
 import { degreesToRadians } from '~/utils/angleUtils';
+import { useErectorBoundary } from '~/stores/ErectorBoundary';
 
 const container = useTemplateRef("container")
 const objectSelection = useObjectSelection()
@@ -29,6 +30,7 @@ let unifiedPipeControls: PipeControls
 let simulationControls: SimulationControls
 let isAnyGizmoDragging = false
 const erector = useErector()
+const erectorBoundary = useErectorBoundary()
 
 const allJointTypes = [
   ...definitions.pla_joints.categories.flatMap(c => c.types),
@@ -227,6 +229,7 @@ const setupScene = () => {
   scene.add(ambientLight)
   const directionalLight = new DirectionalLight(0xffffff)
   scene.add(directionalLight)
+  erectorBoundary.syncAllToScene()
   animate(scene)
 }
 
@@ -234,6 +237,7 @@ const animate = (scene: Scene) => {
   if (!scene) return;
   erector.syncRootPipeIds()
   if (isAnyGizmoDragging) erector.markDirty()
+  const wasDirty = erector.isDirty
   if (erector.rootPipeObjects.length > 0) {
     const calculatePosition = erector.calculateWorldPosition()
     calculatePosition(erector.rootPipeIds.map(rootPipeId => {
@@ -246,6 +250,10 @@ const animate = (scene: Scene) => {
     }))
   }
 
+  if ((wasDirty || pendingBoundaryCheck) && erectorBoundary.boundaries.length > 0) {
+    erectorBoundary.checkInterference()
+    pendingBoundaryCheck = false
+  }
   controls.update()
   requestAnimationFrame(() => animate(scene))
   renderer.render(scene, camera)
@@ -257,6 +265,16 @@ watch(() => objectSelection.object, (newSelection) => {
     unifiedPipeControls?.clear()
     simulationControls?.clear()
   }
+})
+
+let pendingBoundaryCheck = false
+
+watch(() => erectorBoundary.boundaries, () => {
+  pendingBoundaryCheck = true
+}, { deep: true })
+
+watch(() => erector.instances.map(i => i.id).join(','), () => {
+  pendingBoundaryCheck = true
 })
 
 watch(() => erector.isSimulationMode, (isSimMode) => {

@@ -27,6 +27,13 @@
       >
         エラー<span v-if="errorCount > 0" class="badge">{{ errorCount }}</span>
       </button>
+      <button
+        class="tab"
+        :class="{ active: activeTab === 'boundary', 'has-violation': violationCount > 0 }"
+        @click.stop="switchTab('boundary')"
+      >
+        バウンダリ<span v-if="violationCount > 0" class="badge">{{ violationCount }}</span>
+      </button>
     </div>
     <div class="content">
       <SelectComponents v-show="activeTab === 'parts'" class="tab-pane" />
@@ -35,17 +42,22 @@
         <EditComponent v-else />
       </div>
       <InvalidConnections v-show="activeTab === 'error'" class="tab-pane" />
+      <BoundaryEditor v-show="activeTab === 'boundary'" class="tab-pane" />
     </div>
   </div>
 </template>
 
 <script lang="ts" setup>
+import { useErectorBoundary } from '~/stores/ErectorBoundary'
+
 const { isOpen, activeTab, open, close, switchTab } = useBottomSheet()
 const erector = useErector()
 const objectSelection = useObjectSelection()
+const boundary = useErectorBoundary()
 
 const errorCount = computed(() => erector.invalidConnections.length + erector.rootMerges.length)
 const hasErrors = computed(() => errorCount.value > 0)
+const violationCount = computed(() => boundary.violations.length)
 
 // 選択オブジェクト変更時に編集タブを自動で開く
 watch(() => objectSelection.object, (newVal) => {
@@ -138,6 +150,14 @@ function onHandleClick() {
 
     &.active {
       border-bottom-color: #cc0000;
+    }
+  }
+
+  &.has-violation {
+    color: #cc2200;
+
+    &.active {
+      border-bottom-color: #cc2200;
     }
   }
 }

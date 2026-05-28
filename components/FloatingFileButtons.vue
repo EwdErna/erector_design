@@ -7,7 +7,8 @@
 </template>
 
 <script lang="ts" setup>
-import type { ErectorPipe } from '~/types/erector_component'
+import type { ErectorPipe, ErectorBoundary } from '~/types/erector_component'
+import { useErectorBoundary } from '~/stores/ErectorBoundary'
 
 type UploadedStructure = {
   pipes: Array<ErectorPipe & {
@@ -25,7 +26,10 @@ type UploadedStructure = {
     position: [number, number, number]
     rotation: [number, number, number]
   }[]
+  boundaries?: Array<ErectorBoundary & { position: [number, number, number], size: [number, number, number] }>
 }
+
+const boundary = useErectorBoundary()
 
 const fileInput = useTemplateRef('fileInput')
 
@@ -63,10 +67,17 @@ function download() {
       midway: pipe.connections.midway.map(conn => ({ ...conn, position: conn.position * 1000 }))
     }
   }))
+  const boundaries = boundary.boundaries.map(b => ({
+    ...b,
+    position: b.position.map(v => v * 1000) as [number, number, number],
+    size: b.size.map(v => v * 1000) as [number, number, number],
+  }))
+
   const output = {
     pipes,
     joints: erector.joints.map(j => ({ id: j.id, name: j.name })),
-    ...(rootTransforms.length > 0 && { rootTransforms })
+    ...(rootTransforms.length > 0 && { rootTransforms }),
+    ...(boundaries.length > 0 && { boundaries }),
   }
   const data = new Blob([JSON.stringify(output, null, 4)], { type: 'application/json' })
   a.href = URL.createObjectURL(data)
@@ -125,7 +136,17 @@ function handleFileUpload(event: Event) {
       const objectSelection = useObjectSelection()
       erector.clearAll()
       objectSelection.select('')
+      boundary.clearAll()
+
       erector.loadFromStructure(structureInMeters)
+
+      if (structure.boundaries) {
+        boundary.loadBoundaries(structure.boundaries.map(b => ({
+          ...b,
+          position: b.position.map(v => v / 1000) as [number, number, number],
+          size: b.size.map(v => v / 1000) as [number, number, number],
+        })))
+      }
     } catch {
       alert('Error reading file. Please select a valid JSON file.')
     }

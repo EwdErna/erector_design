@@ -68,6 +68,22 @@ export type ErectorPipe = {
   }
 }
 
+export type ErectorBoundary = {
+  id: string
+  type: 'outer' | 'exclusion'
+  label: string
+  position: [number, number, number]  // meters, center
+  size: [number, number, number]       // meters, full extent
+}
+
+export type BoundaryViolation = {
+  objectId: string
+  objectType: 'pipe' | 'joint'
+  boundaryId: string
+  boundaryType: 'outer' | 'exclusion'
+  label: string
+}
+
 export function isErectorPipe(obj: any): obj is ErectorPipe {
   return obj &&
     typeof obj === 'object' &&

@@ -16,7 +16,7 @@
         </div>
       </section>
       <section class="right">
-        <EditComponent></EditComponent>
+        <RightPanel></RightPanel>
       </section>
     </main>
     <footer></footer>

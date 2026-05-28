@@ -288,6 +288,7 @@ export function useErector() {
 
   function updateConnection(id: string, connectionToUpdate: Partial<ErectorPipeConnection>) {
     graph.updateConnection(id, connectionToUpdate)
+    scene.markDirty()
     validation.lastModifiedConnectionId = id
     validation.scheduleValidation()
   }

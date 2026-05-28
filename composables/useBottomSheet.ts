@@ -1,6 +1,6 @@
 import { ref, readonly } from 'vue'
 
-type Tab = 'parts' | 'edit' | 'error'
+type Tab = 'parts' | 'edit' | 'error' | 'boundary'
 
 const isOpen = ref(true)
 const activeTab = ref<Tab>('parts')
