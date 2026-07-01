@@ -90,7 +90,7 @@
           </div>
           <div>Hole ID:
             <select :value="conn.holeId" @change="updateConnection($event, selectedPipe.id, conn.id, 'holeId')">
-              <option v-for="_, j in connMidJoint(i)?.holes" :value="j">{{ j }}</option>
+              <option v-for="j in connMidThroughHoleIndices(i)" :key="j" :value="j">{{ j }}</option>
             </select>
           </div>
           <div>Rotation:
@@ -339,6 +339,15 @@ const connMidJoint = computed(() => (i: number) => {
   if (!conn) return undefined
   return erector.joints.find(j => j.id === conn.jointId)
 })
+// midway接続はTHROUGH穴のみ選択可能
+const connMidThroughHoleIndices = computed(() => (i: number) => {
+  const joint = connMidJoint.value(i)
+  if (!joint) return []
+  return joint.holes
+    .map((hole, idx) => ({ hole, idx }))
+    .filter(({ hole }) => hole.type === 'THROUGH')
+    .map(({ idx }) => idx)
+})
 
 const pipeRelationships = ref<import('~/stores/ErectorGraph').PipeJointRelationship[]>([])
 watch(selectedPipe, (pipe) => {
@@ -375,6 +384,37 @@ function addConnectionToSelected(side: 'start' | 'end' | 'midway') {
       ...pipe.connections.midway.map(c => c.jointId),
     ]).filter((id): id is string => id !== undefined)
   )
+
+  if (side === 'midway') {
+    // midway接続は空き（未接続）のTHROUGH穴のみ有効。
+    // 既に接続されている (jointId, holeId) を洗い出す。
+    const usedHoles = new Set<string>()
+    for (const pipe of erector.pipes) {
+      for (const conn of [
+        pipe.connections.start,
+        pipe.connections.end,
+        ...pipe.connections.midway,
+      ]) {
+        if (conn) usedHoles.add(`${conn.jointId}:${conn.holeId}`)
+      }
+    }
+    // ジョイントの最初の「空きTHROUGH穴」を返す（無ければ-1）
+    const firstFreeThroughHole = (joint: ErectorJoint) =>
+      joint.holes.findIndex(
+        (hole, idx) => hole.type === 'THROUGH' && !usedHoles.has(`${joint.id}:${idx}`)
+      )
+    // 未使用ジョイントを優先し、無ければ使用中のジョイントからも探す
+    const unusedWithFree = erector.joints
+      .filter(j => !usedJointIds.has(j.id))
+      .find(j => firstFreeThroughHole(j) !== -1)
+    const anyWithFree = erector.joints.find(j => firstFreeThroughHole(j) !== -1)
+    const joint = unusedWithFree ?? anyWithFree
+    if (!joint) return  // 空きTHROUGH穴を持つジョイントが1つも無い
+    erector.addConnection(selectedPipe.value.id, joint.id, firstFreeThroughHole(joint), side)
+    erector.validateConnections()
+    return
+  }
+
   const joint =
     erector.joints.find(j => !usedJointIds.has(j.id)) ??
     erector.joints[erector.joints.length - 1]
