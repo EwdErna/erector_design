@@ -30,6 +30,7 @@ type UploadedStructure = {
 }
 
 const boundary = useErectorBoundary()
+const lastFileName = useState('erector-last-filename', () => 'erector-design.json')
 
 const fileInput = useTemplateRef('fileInput')
 
@@ -81,7 +82,7 @@ function download() {
   }
   const data = new Blob([JSON.stringify(output, null, 4)], { type: 'application/json' })
   a.href = URL.createObjectURL(data)
-  a.download = 'erector-design.json'
+  a.download = lastFileName.value
   a.click()
   URL.revokeObjectURL(a.href)
   document.body.removeChild(a)
@@ -95,6 +96,7 @@ function handleFileUpload(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
+  lastFileName.value = file.name
   const reader = new FileReader()
   reader.onload = (e) => {
     try {
