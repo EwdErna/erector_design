@@ -418,6 +418,7 @@ export function useErector() {
     get newConnectionId() { return graph.newConnectionId },
 
     // --- Scene state ---
+    get isDirty() { return scene.isDirty },
     get instances() { return scene.instances },
     get debugArrows() { return scene.debugArrows },
     get instanceObjectMap() { return scene.instanceObjectMap },

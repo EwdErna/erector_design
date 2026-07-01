@@ -269,13 +269,11 @@ watch(() => objectSelection.object, (newSelection) => {
 
 let pendingBoundaryCheck = false
 
+// 境界そのものの追加・変更・移動は isDirty では拾えないので watch で明示的に再判定を促す。
+// オブジェクトの追加・削除・移動・回転・長さ変更等は isDirty 経由でカバーされる。
 watch(() => erectorBoundary.boundaries, () => {
   pendingBoundaryCheck = true
 }, { deep: true })
-
-watch(() => erector.instances.map(i => i.id).join(','), () => {
-  pendingBoundaryCheck = true
-})
 
 watch(() => erector.isSimulationMode, (isSimMode) => {
   if (!isSimMode) {
