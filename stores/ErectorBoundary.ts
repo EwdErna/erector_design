@@ -20,6 +20,27 @@ function boundaryToBox3(b: ErectorBoundary): Box3 {
   )
 }
 
+// 面でぴったり接触するだけでは違反とせず、実際にめり込んだ場合のみ true を返す。
+// EPS は浮動小数点誤差の吸収用（1e-4 m = 0.1mm）。
+const CONTACT_EPS = 1e-4
+
+function boxesOverlap(a: Box3, b: Box3): boolean {
+  return (
+    a.min.x < b.max.x - CONTACT_EPS && a.max.x > b.min.x + CONTACT_EPS &&
+    a.min.y < b.max.y - CONTACT_EPS && a.max.y > b.min.y + CONTACT_EPS &&
+    a.min.z < b.max.z - CONTACT_EPS && a.max.z > b.min.z + CONTACT_EPS
+  )
+}
+
+// objBox が outerBox の内側に収まっているか。面がぴったり一致するのは許容する。
+function boxContainsBox(outer: Box3, objBox: Box3): boolean {
+  return (
+    outer.min.x - CONTACT_EPS <= objBox.min.x && objBox.max.x <= outer.max.x + CONTACT_EPS &&
+    outer.min.y - CONTACT_EPS <= objBox.min.y && objBox.max.y <= outer.max.y + CONTACT_EPS &&
+    outer.min.z - CONTACT_EPS <= objBox.min.z && objBox.max.z <= outer.max.z + CONTACT_EPS
+  )
+}
+
 export const useErectorBoundary = defineStore('erectorBoundary', {
   state: () => ({
     boundaries: [] as ErectorBoundary[],
@@ -131,7 +152,7 @@ export const useErectorBoundary = defineStore('erectorBoundary', {
         const objBox = new Box3().setFromObject(inst.obj)
         const objectType = erectorGraph.pipes.some(p => p.id === inst.id) ? 'pipe' : 'joint'
 
-        if (outerBox && !outerBox.containsBox(objBox)) {
+        if (outerBox && !boxContainsBox(outerBox, objBox)) {
           const key = `${inst.id}|${outer!.id}`
           if (!seen.has(key)) {
             seen.add(key)
@@ -146,7 +167,7 @@ export const useErectorBoundary = defineStore('erectorBoundary', {
         }
 
         for (const { b, box } of exclusions) {
-          if (box.intersectsBox(objBox)) {
+          if (boxesOverlap(box, objBox)) {
             const key = `${inst.id}|${b.id}`
             if (!seen.has(key)) {
               seen.add(key)
