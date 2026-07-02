@@ -9,11 +9,8 @@
       </div>
     </div>
     <div class="buttons">
-      <div
-        class="button"
-        :class="{ active: erector.isSimulationMode }"
-        @click="toggleSimulation"
-      >{{ erector.isSimulationMode ? 'Design Mode' : 'Simulation' }}</div>
+      <div class="button" :class="{ active: erector.isSimulationMode }" @click="toggleSimulation">{{
+        erector.isSimulationMode ? 'Design Mode' : 'Simulation' }}</div>
       <div class="button" :class="{ disabled: erector.isSimulationMode }" @click="download">Download</div>
       <div class="button" :class="{ disabled: erector.isSimulationMode }" @click="upload">Upload</div>
       <input ref="fileInput" type="file" accept=".json" @change="handleFileUpload" style="display: none;">
@@ -231,7 +228,8 @@ function handleFileUpload(event: Event) {
 </script>
 
 <style scoped>
-@media (min-width: 769px), (pointer: fine) {
+@media (min-width: 769px),
+(pointer: fine) {
   .container {
     display: flex;
     justify-content: space-between;

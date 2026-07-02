@@ -271,7 +271,11 @@ export const useErectorScene = defineStore('erectorScene', {
         if (movableDef?.type !== 'free_rotation') return connRotation
         const nonClampedIdx = 1 - (joint.clampedHoleIndex ?? 0)
         if (holeId === nonClampedIdx) {
-          return connRotation - radiansToDegrees(simState.orbitAngle)
+          // 非アンカーの同軸ジョイントは spin ロール済みの非固定穴パイプから p2j 配置される。
+          // +spinAngle でパイプのロールを打ち消し、固定姿勢に整合させる。
+          // 前提: 同軸グループの spinAngle は全て等しい（setSpinAngle の伝播が保証）。
+          //   崩れると非アンカー側が spin 分ずれる。
+          return connRotation - radiansToDegrees(simState.orbitAngle) + radiansToDegrees(simState.spinAngle)
         }
         return connRotation
       }
@@ -344,18 +348,26 @@ export const useErectorScene = defineStore('erectorScene', {
           p.connections.midway.some(c => c.jointId === jointId && c.holeId === nonClampedIdx)
         )
         if (!nonClampedPipe) return false
+        // 非固定穴パイプを共有し spin が有効な free_rotation ジョイントを収集（自身を含む）。
+        // spin は全同軸ジョイントへ同一値で伝播されるため、この集合内の spinAngle は等しい。
+        const coAxialSpinJoints: string[] = []
         for (const conn of nonClampedPipe.connections.midway) {
-          if (conn.jointId === jointId) continue
-          const otherJoint = jointMap.get(conn.jointId)
-          if (!otherJoint) continue
-          const otherMovableDef = getMovableDefForJoint(otherJoint.name)
-          if (otherMovableDef?.type !== 'free_rotation') continue
-          const otherNonClampedIdx = 1 - (otherJoint.clampedHoleIndex ?? 0)
-          if (conn.holeId !== otherNonClampedIdx) continue
-          const otherSimState = simulation.simulationStates[otherJoint.id]
-          if (otherSimState?.type === 'free_rotation' && Math.abs(otherSimState.spinAngle) > 1e-10) return true
+          const other = jointMap.get(conn.jointId)
+          if (!other) continue
+          if (getMovableDefForJoint(other.name)?.type !== 'free_rotation') continue
+          if (conn.holeId !== 1 - (other.clampedHoleIndex ?? 0)) continue
+          const st = simulation.simulationStates[other.id]
+          if (st?.type === 'free_rotation' && Math.abs(st.spinAngle) > 1e-10) {
+            coAxialSpinJoints.push(other.id)
+          }
         }
-        return false
+        // 自身の spin が無効なら待たない（通常の p2j 配置を行う）。
+        if (!coAxialSpinJoints.includes(jointId)) return false
+        // アンカー（jointId 最小・フレーム間で安定）だけが固定穴パイプから配置され、
+        // 非固定穴パイプの j2p 配置の基点になる。それ以外は待って、spin ロール済みの
+        // 非固定穴パイプから p2j 配置される（getP2JEffectiveConnRotation の spin 補償で整合）。
+        const anchor = coAxialSpinJoints.reduce((a, b) => (a < b ? a : b))
+        return jointId !== anchor
       }
 
       function update(pipe: typeof pipes[number], pipeTransform: transform) {
