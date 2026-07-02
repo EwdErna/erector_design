@@ -24,6 +24,7 @@
       <FloatingFileButtons />
       <BottomSheet />
     </div>
+    <CostEstimateDialog />
   </div>
 </template>
 

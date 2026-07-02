@@ -11,6 +11,7 @@
     <div class="buttons">
       <div class="button" :class="{ active: erector.isSimulationMode }" @click="toggleSimulation">{{
         erector.isSimulationMode ? 'Design Mode' : 'Simulation' }}</div>
+      <div class="button" @click="costEstimate.open()">見積</div>
       <div class="button" :class="{ disabled: erector.isSimulationMode }" @click="download">Download</div>
       <div class="button" :class="{ disabled: erector.isSimulationMode }" @click="upload">Upload</div>
       <input ref="fileInput" type="file" accept=".json" @change="handleFileUpload" style="display: none;">
@@ -22,9 +23,11 @@
 import type { ErectorPipe, ErectorBoundary } from '~/types/erector_component'
 import { definitions } from '~/utils/Erector/erectorComponentDefinition'
 import { useErectorBoundary } from '~/stores/ErectorBoundary'
+import { useCostEstimate } from '~/composables/useCostEstimate'
 
 const erector = useErector()
 const boundary = useErectorBoundary()
+const costEstimate = useCostEstimate()
 
 function toggleSimulation() {
   if (erector.isSimulationMode) {

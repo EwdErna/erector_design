@@ -26,6 +26,7 @@ logs
 # data
 data/*
 !data/erector_component.json
+!data/erector_price.json
 log.json
 test.png
 test.py

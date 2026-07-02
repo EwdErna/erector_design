@@ -1,5 +1,6 @@
 <template>
   <div class="floating-file-buttons">
+    <button class="fab" @click="costEstimate.open()" title="見積">¥</button>
     <button class="fab" @click="upload" title="Upload">↑</button>
     <button class="fab" @click="download" title="Download">↓</button>
     <input ref="fileInput" type="file" accept=".json" @change="handleFileUpload" style="display: none;">
@@ -9,6 +10,7 @@
 <script lang="ts" setup>
 import type { ErectorPipe, ErectorBoundary } from '~/types/erector_component'
 import { useErectorBoundary } from '~/stores/ErectorBoundary'
+import { useCostEstimate } from '~/composables/useCostEstimate'
 
 type UploadedStructure = {
   pipes: Array<ErectorPipe & {
@@ -30,6 +32,7 @@ type UploadedStructure = {
 }
 
 const boundary = useErectorBoundary()
+const costEstimate = useCostEstimate()
 const lastFileName = useState('erector-last-filename', () => 'erector-design.json')
 
 const fileInput = useTemplateRef('fileInput')
